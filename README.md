@@ -1,14 +1,5 @@
 # 🚀 Update Repos - Atualizador de Repositórios GitHub
 
-<div align="center">
-
-![Version](https://img.shields.io/badge/version-2.1-brightgreen?style=for-the-badge)
-![Python](https://img.shields.io/badge/python-3.8+-blue?style=for-the-badge&logo=python)
-![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge&logo=opensourceinitiative)
-![GitHub stars](https://img.shields.io/github/stars/anomalyco/opencode?style=for-the-badge&logo=github)
-![GitHub issues](https://img.shields.io/github/issues/anomalyco/opencode?style=for-the-badge)
-![GitHub last commit](https://img.shields.io/github/last-commit/anomalyco/opencode?style=for-the-badge)
-
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&duration=3000&pause=1000&color=00D9FF&center=true&vCenter=true&width=600&lines=Atualize+seus+reposit%C3%B3rios+GitHub+automaticamente!;Interface+Rich+interativa+e+colorida!;Downloads+paralelos+com+barra+de+progresso!;Cache+inteligente+e+rate+limit+tratado!" alt="Typing SVG" />
 
 </div>
