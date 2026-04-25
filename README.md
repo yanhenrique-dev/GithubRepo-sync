@@ -212,32 +212,10 @@ update-repos/
 
 ---
 
-## 🎯 Repositórios Suportados (Padrão)
-
-| Arquivo ZIP | Repositório GitHub | Status Padrão |
-|:---|:---|:---|
-| claw-code-main.zip | ultraworkers/claw-code | ⬆️ Atualizar |
-| langflow-main.zip | langflow-ai/langflow | ⬆️ Atualizar |
-| hermes-agent-main.zip | NousResearch/hermes-agent | ⬆️ Atualizar |
-| openclaude-main.zip | Gitlawb/openclaude | ✅ Atualizado |
-| paperclip-master.zip | paperclipai/paperclip | ⬆️ Atualizar |
-| project-nomad-main.zip | Crosstalk-Solutions/project-nomad | ⬆️ Atualizar |
-| RuView-main.zip | ruvnet/RuView | ⬆️ Atualizar |
-| superpowers-main.zip | obra/superpowers | ⬆️ Atualizar |
-| ccSource-main.zip | jengzang/ccSource | ✅ Atualizado |
-| flai-master.zip | yurilq/flai | ✅ Atualizado |
-| megathread_pirata-main.zip | piratarialink/megathread_pirata | ✅ Atualizado |
-| OBLITERATUS-main.zip | elder-plinius/OBLITERATUS | ✅ Atualizado |
-| obsidian-skills-main.zip | kepano/obsidian-skills | ✅ Atualizado |
-| opensquad-master.zip | renatoasse/opensquad | ⬆️ Atualizar |
-| paul-main.zip | ChristopherKahler/paul | ✅ Atualizado |
-| Paul for Opencode.zip | citypaul/.dotfiles | ⬆️ Atualizar |
-
----
 
 ## 🤝 Contribuindo
 
-Contribuições são bem-vindas! 🎉
+@yanhenrique-dev 
 
 ### Como contribuir:
 1. Fork o projeto
@@ -258,14 +236,14 @@ Abra uma [issue](https://github.com/seu-usuario/update-repos/issues) com:
 
 <div align="center">
 
-![GitHub language count](https://img.shields.io/github/languages/count/anomalyco/opencode?style=flat-square)
-![GitHub top language](https://img.shields.io/github/languages/top/anomalyco/opencode?style=flat-square&color=blue)
-![GitHub repo size](https://img.shields.io/github/repo-size/anomalyco/opencode?style=flat-square)
-![GitHub downloads](https://img.shields.io/github/downloads/anomalyco/opencode/total?style=flat-square&color=green)
+![GitHub language count](https://img.shields.io/github/languages/count/anomalyco/GithubRepo-sync?style=flat-square)
+![GitHub top language](https://img.shields.io/github/languages/top/anomalyco/GithubRepo-sync?style=flat-square&color=blue)
+![GitHub repo size](https://img.shields.io/github/repo-size/anomalyco/GithubRepo-sync?style=flat-square)
+![GitHub downloads](https://img.shields.io/github/downloads/anomalyco/GithubRepo-sync/total?style=flat-square&color=green)
 
 ### ⭐ Histórico de Estrelas
 
-![Star History Chart](https://api.star-history.com/svg?repos=seu-usuario/update-repos&type=Date)
+![Star History Chart](https://api.star-history.com/svg?repos=yanhenrique-dev/GithubRepo-sync&type=Date)
 
 </div>
 
@@ -304,6 +282,6 @@ furnished to do so, subject to the following conditions:
 
 [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&size=18&duration=2000&pause=500&color=FF6B6B&center=true&vCenter=true&width=435&lines=Star+⭐+se+gostou!;Fork+🍴+e+contribua!;Share+📤+com+amigos!)](https://git.io/typing-svg)
 
-![Visitor Count](https://profile-counter.glitch.me/seu-usuario/update-repos/count.svg)
+![Visitor Count](https://profile-counter.glitch.me/yanhenrique-dev/GithubRepo-sync/count.svg)
 
 </div>
