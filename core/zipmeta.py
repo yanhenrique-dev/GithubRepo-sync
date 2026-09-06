@@ -53,27 +53,25 @@ def strip_branch_suffix(name: str) -> str:
     return BRANCH_SUFFIX.sub("", name)
 
 
-def _from_text(text: str) -> tuple[str, str] | None:
+def _iter_github_links(text: str):
     for m in GH.finditer(text):
         owner, repo = m.group(1), m.group(2).removesuffix(".git").rstrip("/").rstrip(".")
         if not owner or not repo or repo.lower() in JUNK:
             continue
         if owner.lower() in OWNER_BLACKLIST:
             continue
-        return owner, repo
-    return None
+        yield owner, repo
+
+
+def _from_text(text: str) -> tuple[str, str] | None:
+    return next(_iter_github_links(text), None)
 
 
 def _from_readme(text: str, repo_guess: str) -> tuple[str, str] | None:
     """No README prefere o link cujo repo bate com o nome do zip (evita badge de
     ferramenta terceira). Cai no primeiro válido se nada bater."""
     first: tuple[str, str] | None = None
-    for m in GH.finditer(text):
-        owner, repo = m.group(1), m.group(2).removesuffix(".git").rstrip("/").rstrip(".")
-        if not owner or not repo or repo.lower() in JUNK:
-            continue
-        if owner.lower() in OWNER_BLACKLIST:
-            continue
+    for owner, repo in _iter_github_links(text):
         if first is None:
             first = (owner, repo)
         if repo.lower() == repo_guess.lower():

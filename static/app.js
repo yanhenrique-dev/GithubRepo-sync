@@ -180,45 +180,45 @@ function paintMode() {
 }
 
 function paintBackup() {
-  if (!backupBtn) return;
-  backupBtn.textContent = BACKUP ? "BACKUP: ON" : "BACKUP: OFF";
-  backupBtn.setAttribute("aria-pressed", BACKUP ? "true" : "false");
-  backupBtn.classList.toggle("btn-inv", BACKUP);
+  paintToggle(backupBtn, BACKUP, "BACKUP: ON", "BACKUP: OFF");
+}
+
+async function postFlag(endpoint, payload, apply, msgs) {
+  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
+  if (msgs.say_first) say(msgs.say_first);
+  try {
+    const j = await api(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: BASE, ...payload }),
+    });
+    apply(j);
+    say(msgs.ok());
+  } catch (e) { say(`${msgs.fail}: ${e.message}`); }
+  refreshLog();
 }
 
 async function toggleBackup() {
-  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
   const next = !BACKUP;
-  try {
-    const j = await api("/api/backup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, backup: next }),
+  await postFlag("/api/backup", { backup: next },
+    (j) => { BACKUP = !!j.backup; paintBackup(); },
+    {
+      ok: () => BACKUP ? "BACKUP LIGADO — UPDATE GUARDA .BAK." : "BACKUP DESLIGADO — UPDATE TROCA DIRETO, SEM VOLTA.",
+      fail: "FALHA AO TROCAR BACKUP",
     });
-    BACKUP = !!j.backup;
-    paintBackup();
-    say(BACKUP ? "BACKUP LIGADO — UPDATE GUARDA .BAK." : "BACKUP DESLIGADO — UPDATE TROCA DIRETO, SEM VOLTA.");
-  } catch (e) { say(`FALHA AO TROCAR BACKUP: ${e.message}`); }
-  refreshLog();
 }
 
 async function toggleMode() {
-  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
   const next = !ZIP_ONLY;
-  say(next ? "TROCANDO P/ SÓ-ZIP…" : "TROCANDO P/ PASTAS…");
-  try {
-    const j = await api("/api/mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, zip_only: next }),
+  await postFlag("/api/mode", { zip_only: next },
+    (j) => { ZIP_ONLY = !!j.zip_only; paintMode(); },
+    {
+      say_first: next ? "TROCANDO P/ SÓ-ZIP…" : "TROCANDO P/ PASTAS…",
+      ok: () => ZIP_ONLY
+        ? "MODO SÓ-ZIP — UPDATE TROCA SÓ O .ZIP, PASTA INTACTA."
+        : "MODO PASTAS — UPDATE REFRESCA A PASTA EXTRAÍDA.",
+      fail: "FALHA AO TROCAR MODO",
     });
-    ZIP_ONLY = !!j.zip_only;
-    paintMode();
-    say(ZIP_ONLY
-      ? "MODO SÓ-ZIP — UPDATE TROCA SÓ O .ZIP, PASTA INTACTA."
-      : "MODO PASTAS — UPDATE REFRESCA A PASTA EXTRAÍDA.");
-  } catch (e) { say(`FALHA AO TROCAR MODO: ${e.message}`); }
-  refreshLog();
 }
 
 function barStart() {

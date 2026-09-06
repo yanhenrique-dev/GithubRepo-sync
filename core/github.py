@@ -100,6 +100,20 @@ async def token_status() -> dict:
     return out
 
 
+def _shorten(text: str, limit: int = 120) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _check_rate_limit(resp: httpx.Response) -> None:
+    if resp.status_code == 403 and "rate limit" in resp.text.lower():
+        raise RuntimeError("Rate limit estourado. Defina GITHUB_TOKEN no .env")
+    if resp.status_code == 401:
+        raise RuntimeError("GITHUB_TOKEN inválido.")
+
+
 async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
     """Candidatos owner/repo pela Search API (ordem de estrelas)."""
     q = (query or "").strip()
@@ -110,10 +124,7 @@ async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
             f"{API}/search/repositories",
             params={"q": f"{q} in:name", "sort": "stars", "order": "desc", "per_page": limit},
         )
-    if r.status_code == 403 and "rate limit" in r.text.lower():
-        raise RuntimeError("Rate limit estourado. Defina GITHUB_TOKEN no .env")
-    if r.status_code == 401:
-        raise RuntimeError("GITHUB_TOKEN inválido.")
+    _check_rate_limit(r)
     r.raise_for_status()
     items = []
     for it in (r.json().get("items") or [])[:limit]:
@@ -122,7 +133,7 @@ async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
                 "full_name": it.get("full_name"),
                 "url": it.get("html_url"),
                 "stars": it.get("stargazers_count", 0),
-                "description": (it.get("description") or "")[:120],
+                "description": _shorten(it.get("description")),
             }
         )
     return items

@@ -90,6 +90,14 @@ def claim_lock(pid: int) -> bool:
     return True
 
 
+def stop_proc(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
 def start_server() -> subprocess.Popen:
     logfh = open(LOG, "a", encoding="utf-8")
     return subprocess.Popen(
@@ -137,11 +145,7 @@ def main() -> int:
 
     def restart(icon, _item):
         nonlocal proc
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        stop_proc(proc)
         proc = start_server()
         LOCK.write_text(str(proc.pid))
         wait_ready(proc)
@@ -162,11 +166,7 @@ def main() -> int:
     try:
         icon.run()
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        stop_proc(proc)
         LOCK.unlink(missing_ok=True)
     return 0
 

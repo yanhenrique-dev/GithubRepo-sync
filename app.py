@@ -196,24 +196,23 @@ def api_map(body: MapBody):
     return {"ok": True}
 
 
+def _set_config_flag(path: str, key: str, value: bool, label: str) -> dict:
+    b = resolve_base(path)
+    cfg = load_config(b)
+    cfg[key] = value
+    save_config(b, cfg)
+    log(f"{label} {b} -> {value}")
+    return {"ok": True, key: value}
+
+
 @app.post("/api/mode")
 def api_mode(body: ModeBody):
-    b = resolve_base(body.path)
-    cfg = load_config(b)
-    cfg["zip_only"] = body.zip_only
-    save_config(b, cfg)
-    log(f"MODE {b} -> {'SO-ZIP' if body.zip_only else 'PASTAS'}")
-    return {"ok": True, "zip_only": body.zip_only}
+    return _set_config_flag(body.path, "zip_only", body.zip_only, "MODE")
 
 
 @app.post("/api/backup")
 def api_backup(body: BackupBody):
-    b = resolve_base(body.path)
-    cfg = load_config(b)
-    cfg["backup"] = body.backup
-    save_config(b, cfg)
-    log(f"BACKUP {b} -> {'ON' if body.backup else 'OFF'}")
-    return {"ok": True, "backup": body.backup}
+    return _set_config_flag(body.path, "backup", body.backup, "BACKUP")
 
 
 @app.post("/api/update")
