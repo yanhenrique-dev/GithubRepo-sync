@@ -45,8 +45,15 @@ pip install -r requirements.txt
 cp .env.example .env
 # edite o .env e ponha um token só-leitura de github.com/settings/tokens
 
-# 4. Rode
+# 4. Rode (terminal)
 uvicorn app:app --port 8000
+```
+
+Ou com ícone na bandeja (abre o navegador sozinho; fechar o ícone para o servidor):
+
+```bash
+./tray.py            # porta 8000
+./tray.py 8123       # outra porta
 ```
 
 Abra **http://127.0.0.1:8000**, cole a pasta dos repos — a detecção é automática.
