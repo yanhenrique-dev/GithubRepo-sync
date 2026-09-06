@@ -6,3 +6,7 @@ venv/
 .alldown/
 *.bak-*
 /tmp/alldown/
+
+# skills locais (nao publicar)
+.agents/
+skills-lock.json
