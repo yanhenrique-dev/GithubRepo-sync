@@ -9,6 +9,7 @@ Uso:  ./tray.py [porta]   (ou REPOREFRESH_PORT=8000 ./tray.py)
 from __future__ import annotations
 
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -163,6 +164,17 @@ def main() -> int:
             MenuItem("Sair (para o servidor)", quit_app),
         ),
     )
+
+    def _on_signal(signum, _frame):
+        stop_proc(proc)
+        LOCK.unlink(missing_ok=True)
+        try:
+            icon.stop()
+        finally:
+            raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
     try:
         icon.run()
     finally:
