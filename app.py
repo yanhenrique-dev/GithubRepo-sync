@@ -144,7 +144,22 @@ async def api_check(path: str):
             except Exception as exc:  # noqa: BLE001 - erro por linha, não derruba tudo
                 return {**it, "error": str(exc)}
             local_sha = (state.get(it["name"], {}) or {}).get("local_sha")
-            return {**it, **remote, "local_sha": local_sha, "behind": local_sha != remote["remote_sha"]}
+            merged = {**it, **remote, "local_sha": local_sha, "behind": local_sha != remote["remote_sha"]}
+            canon = remote.get("canonical_url")
+            if canon and canon != it.get("github_url"):
+                try:
+                    mapping = load_mapping(b)
+                    if it["name"] in mapping:
+                        mapping[it["name"]]["url"] = canon
+                        save_mapping(b, mapping)
+                        merged["github_url"] = canon
+                        parsed = parse_github_url(canon)
+                        if parsed:
+                            merged["owner"], merged["repo"] = parsed
+                        log(f"RENAME {it['name']}: {it.get('github_url')} -> {canon}")
+                except Exception:
+                    pass
+            return merged
 
     out = list(await asyncio.gather(*(_one(it) for it in items)))
     log(f"CHECK {b} -> {len(out)} repos.")

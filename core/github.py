@@ -65,7 +65,16 @@ def _headers() -> dict[str, str]:
 
 
 def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=20, headers=_headers())
+    # Segue 301 de rename (mesmo host api.github.com; httpx remove
+    # Authorization em redirect cross-origin por padrão).
+    return httpx.AsyncClient(timeout=20, headers=_headers(), follow_redirects=True)
+
+
+def _canonical_owner_repo(final_url: str) -> tuple[str, str] | None:
+    m = re.match(r"https?://api\.github\.com/repos/([^/]+)/([^/]+)(?:/|$)", final_url or "")
+    if not m:
+        return None
+    return m.group(1), m.group(2)
 
 
 async def token_status() -> dict:
@@ -139,6 +148,25 @@ async def repo_default_branch(owner: str, repo: str) -> str | None:
     return out
 
 
+async def repo_full_name_by_id(rid: str) -> str | None:
+    key = f"id:{rid}"
+    now = time.time()
+    if key in _branch_cache and now - _branch_cache[key][0] < BRANCH_TTL:
+        return _branch_cache[key][1]
+    out: str | None = None
+    try:
+        async with _client() as client:
+            r = await client.get(f"{API}/repositories/{rid}")
+        if r.status_code == 200:
+            full = r.json().get("full_name")
+            if full and "/" in full:
+                out = full
+    except Exception:
+        pass
+    _branch_cache[key] = (now, out)
+    return out
+
+
 async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
     validate_owner_repo(owner, "owner")
     validate_owner_repo(repo, "repo")
@@ -148,7 +176,7 @@ async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
     if key in _cache and now - _cache[key][0] < TTL:
         return _cache[key][1]
 
-    async with httpx.AsyncClient(timeout=20, headers=_headers()) as client:
+    async with _client() as client:
         commit_resp = await client.get(f"{API}/repos/{owner}/{repo}/commits/{branch_q}")
         if commit_resp.status_code in (404, 422):
             raise ValueError(f"Repo ou branch não existe: {key}")
@@ -168,5 +196,14 @@ async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
         "zipball_url": release.get("zipball_url")
         or f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch_q}",
     }
+    canon = _canonical_owner_repo(str(commit_resp.url))
+    if canon is None:
+        m = re.match(r"https?://api\.github\.com/repositories/(\d+)(?:/|$)", str(commit_resp.url))
+        if m:
+            full = await repo_full_name_by_id(m.group(1))
+            if full:
+                canon = (full.split("/", 1)[0], full.split("/", 1)[1])
+    if canon and (canon[0].lower(), canon[1].lower()) != (owner.lower(), repo.lower()):
+        out["canonical_url"] = f"https://github.com/{canon[0]}/{canon[1]}"
     _cache[key] = (now, out)
     return out
