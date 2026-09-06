@@ -1,4 +1,24 @@
-/* RepoRefresh — Apple dark, 100% offline (só fontes do sistema). */
+/* RepoRefresh — Apple dark, 100% offline (Inter auto-hospedada). */
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/inter-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/inter-500.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/inter-600.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/inter-700.woff2") format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
 :root {
   --bg: #000000;
   --surface: #1c1c1e;
@@ -12,7 +32,7 @@
   --warn: #f0b45a;
   --err: #f0646c;
   --info: #5ecfff;
-  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-sans: -apple-system, "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, -apple-system, monospace;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
