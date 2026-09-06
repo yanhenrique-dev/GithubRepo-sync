@@ -286,7 +286,7 @@ def test_api_update_invalida_cache(tmp_path, monkeypatch):
 
     monkeypatch.setattr(appmod, "fetch_remote", fake_fetch)
     monkeypatch.setattr(appmod, "update_one",
-                         lambda b, n, o, r, br, z, t="": {"name": n, "backup": None, "path": str(b / n)})
+                         lambda b, n, o, r, br, z, t="", make_backup=True: {"name": n, "backup": None, "path": str(b / n)})
     gh._cache["o/r@main"] = (1.0, {"velho": True})
     out = asyncio.run(appmod.api_update(appmod.UpdateBody(path=str(tmp_path), name="proj")))
     assert out["remote_sha"] == "NEW"

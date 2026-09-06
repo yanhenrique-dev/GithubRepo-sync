@@ -181,7 +181,7 @@ def extract_root(zip_path: Path, dest: Path) -> Path:
     return dest
 
 
-def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_url: str, token: str = "") -> dict:
+def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_url: str, token: str = "", make_backup: bool = True) -> dict:
     target = _target_in_base(base, name)
     with _lock_for(name):
         if target.exists() and not target.is_dir() and not target.is_symlink():
@@ -194,10 +194,14 @@ def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_ur
                 root = extract_root(zip_path, work / "extracted")
 
                 backup: str | None = None
-                if target.exists() or target.is_symlink():
+                if (target.exists() or target.is_symlink()) and make_backup:
                     bkp = _unique_backup(base, name)
                     _move_atomic(target, bkp)
                     backup = str(bkp)
+                elif not make_backup and (target.exists() or target.is_symlink()):
+                    # Sem backup: remove o alvo antes (os.replace não
+                    # sobrescreve pasta não-vazia).
+                    _remove_path(target)
 
                 try:
                     _move_atomic(root, target)
@@ -258,7 +262,7 @@ def replace_zip_file(base: Path, name: str, src_zip: Path) -> dict:
         return {"name": name, "backup": backup, "path": str(target)}
 
 
-def update_zip_only(base: Path, name: str, zip_url: str, token: str = "") -> dict:
+def update_zip_only(base: Path, name: str, zip_url: str, token: str = "", make_backup: bool = True) -> dict:
     validate_name(name)
     with _lock_for(name):
         zip_path = download_zip(zip_url, token)
@@ -269,7 +273,7 @@ def update_zip_only(base: Path, name: str, zip_url: str, token: str = "") -> dic
                 raise ValueError("Download não é um .zip válido")
             target = _confine(base, f"{name}.zip")
             backup: str | None = None
-            if target.exists() or target.is_symlink():
+            if (target.exists() or target.is_symlink()) and make_backup:
                 bkp = _unique_backup(base, name, suffix=".zip")
                 _move_atomic(target, bkp)
                 backup = str(bkp)

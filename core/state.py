@@ -74,14 +74,14 @@ def save_state(base: Path, state: dict[str, dict]) -> None:
 def load_config(base: Path) -> dict:
     fp = base / ".alldown" / "config.json"
     if not fp.exists():
-        return {"zip_only": False}
+        return {"zip_only": False, "backup": True}
     try:
         data = json.loads(fp.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return {"zip_only": False}
+        return {"zip_only": False, "backup": True}
     if not isinstance(data, dict):
-        return {"zip_only": False}
-    return {"zip_only": bool(data.get("zip_only", False))}
+        return {"zip_only": False, "backup": True}
+    return {"zip_only": bool(data.get("zip_only", False)), "backup": bool(data.get("backup", True))}
 
 
 def save_config(base: Path, config: dict) -> None:

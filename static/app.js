@@ -3,7 +3,8 @@ const $ = (id) => document.getElementById(id);
 const tbody = $("tbody"), logEl = $("log"), statusEl = $("status"), countEl = $("count");
 const loadbar = $("loadbar"), loadfill = $("loadfill");
 const pathInput = $("in-path"), autoBtn = $("btn-auto"), modeBtn = $("btn-mode");
-const btnAll = $("btn-all");
+const btnAll = $("btn-all"), backupBtn = $("btn-backup");
+let BACKUP = true;
 let BASE = "";
 let ROWS = [];
 let ZIP_ONLY = false;
@@ -176,6 +177,29 @@ function toggleAuto() {
 
 function paintMode() {
   paintToggle(modeBtn, ZIP_ONLY, "MODO: SÓ-ZIP", "MODO: PASTAS");
+}
+
+function paintBackup() {
+  if (!backupBtn) return;
+  backupBtn.textContent = BACKUP ? "BACKUP: ON" : "BACKUP: OFF";
+  backupBtn.setAttribute("aria-pressed", BACKUP ? "true" : "false");
+  backupBtn.classList.toggle("btn-inv", BACKUP);
+}
+
+async function toggleBackup() {
+  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
+  const next = !BACKUP;
+  try {
+    const j = await api("/api/backup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: BASE, backup: next }),
+    });
+    BACKUP = !!j.backup;
+    paintBackup();
+    say(BACKUP ? "BACKUP LIGADO — UPDATE GUARDA .BAK." : "BACKUP DESLIGADO — UPDATE TROCA DIRETO, SEM VOLTA.");
+  } catch (e) { say(`FALHA AO TROCAR BACKUP: ${e.message}`); }
+  refreshLog();
 }
 
 async function toggleMode() {
@@ -351,6 +375,8 @@ async function doScan() {
     ROWS = j.items || [];
     ZIP_ONLY = !!j.zip_only;
     paintMode();
+    BACKUP = j.backup !== false;
+    paintBackup();
     lastScanFailed = false;
     render();
     const mapped = ROWS.filter((r) => r.mapped).length;
@@ -479,6 +505,7 @@ $("btn-scan").addEventListener("click", doScan);
 $("btn-check").addEventListener("click", doCheck);
 if (autoBtn) autoBtn.addEventListener("click", toggleAuto);
 if (modeBtn) modeBtn.addEventListener("click", toggleMode);
+if (backupBtn) backupBtn.addEventListener("click", toggleBackup);
 $("btn-all").addEventListener("click", async () => {
   const todo = visibleRows().filter((r) => r.mapped && r.behind === true);
   if (!todo.length) { say("NADA PARA ATUALIZAR NA LISTA VISÍVEL."); return; }
@@ -536,6 +563,7 @@ pathInput.addEventListener("input", () => {
 setInterval(refreshLog, 8000);
 paintAutoBtn();
 paintMode();
+paintBackup();
 refreshToken();
 render();
 if (autoDetect && looksLikePath(pathInput.value.trim())) doScan();

@@ -41,6 +41,8 @@ def test_state_invalid_returns_empty(tmp_path):
 
 
 def test_config_roundtrip_and_default(tmp_path):
-    assert load_config(tmp_path) == {"zip_only": False}
+    assert load_config(tmp_path) == {"zip_only": False, "backup": True}
     save_config(tmp_path, {"zip_only": True})
-    assert load_config(tmp_path) == {"zip_only": True}
+    assert load_config(tmp_path) == {"zip_only": True, "backup": True}
+    save_config(tmp_path, {"zip_only": False, "backup": False})
+    assert load_config(tmp_path) == {"zip_only": False, "backup": False}

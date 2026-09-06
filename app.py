@@ -82,6 +82,11 @@ class ModeBody(BaseModel):
     zip_only: bool
 
 
+class BackupBody(BaseModel):
+    path: str
+    backup: bool
+
+
 def resolve_base(path: str) -> Path:
     if not path or not path.strip():
         raise HTTPException(400, "Informe o caminho da pasta.")
@@ -106,7 +111,8 @@ def api_scan(path: str):
         it["local_sha"] = st.get("local_sha")
         it["last_check"] = st.get("last_check")
     log(f"SCAN {b} -> {len(items)} itens.")
-    return {"path": str(b), "items": items, "zip_only": load_config(b)["zip_only"]}
+    cfg = load_config(b)
+    return {"path": str(b), "items": items, "zip_only": cfg["zip_only"], "backup": cfg["backup"]}
 
 
 @app.get("/api/check")
@@ -165,9 +171,21 @@ def api_map(body: MapBody):
 @app.post("/api/mode")
 def api_mode(body: ModeBody):
     b = resolve_base(body.path)
-    save_config(b, {"zip_only": body.zip_only})
+    cfg = load_config(b)
+    cfg["zip_only"] = body.zip_only
+    save_config(b, cfg)
     log(f"MODE {b} -> {'SO-ZIP' if body.zip_only else 'PASTAS'}")
     return {"ok": True, "zip_only": body.zip_only}
+
+
+@app.post("/api/backup")
+def api_backup(body: BackupBody):
+    b = resolve_base(body.path)
+    cfg = load_config(b)
+    cfg["backup"] = body.backup
+    save_config(b, cfg)
+    log(f"BACKUP {b} -> {'ON' if body.backup else 'OFF'}")
+    return {"ok": True, "backup": body.backup}
 
 
 @app.post("/api/update")
@@ -199,12 +217,13 @@ async def api_update(body: UpdateBody):
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
         zip_only = load_config(b)["zip_only"]
+        make_backup = load_config(b)["backup"]
         try:
             if zip_only:
-                res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token)
+                res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token, make_backup)
             else:
                 res = await asyncio.to_thread(
-                    update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token
+                    update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token, make_backup
                 )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"Falha ao atualizar: {exc}")
