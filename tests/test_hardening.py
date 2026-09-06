@@ -431,3 +431,18 @@ def test_api_rollback_via_app_limpa_sha(tmp_path, monkeypatch):
     out = asyncio.run(appmod.api_rollback(appmod.UpdateBody(path=str(tmp_path), name="proj")))
     assert out["ok"] is True
     assert "local_sha" not in load_state(tmp_path)["proj"]
+
+
+def test_rollback_volta_ao_original_nao_ao_novo(tmp_path):
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj" / "v.txt").write_text("v0")
+    (tmp_path / "proj").rename(tmp_path / "proj.bak-20260101-000001")
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj" / "v.txt").write_text("v1")
+    (tmp_path / "proj").rename(tmp_path / "proj.bak-20260102-000002")
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj" / "v.txt").write_text("v2")
+    res = upd.rollback_one(tmp_path, "proj")
+    assert (tmp_path / "proj" / "v.txt").read_text() == "v0"
+    assert "000001" in res["restored_from"]
+    assert [p for p in tmp_path.iterdir() if ".bak-" in p.name] == []

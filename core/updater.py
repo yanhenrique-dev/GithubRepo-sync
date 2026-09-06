@@ -329,27 +329,37 @@ def _list_backups(base: Path, prefix: str) -> list[Path]:
 
 
 def rollback_one(base: Path, name: str) -> dict:
+    """Volta ao ORIGINAL (backup mais antigo), não ao intermediário.
+
+    Com N updates há N .baks (v0, v1, ...); restaurar o mais novo finge
+    que reverteu. Depois de voltar ao original, os .baks restantes são
+    descartados (estados intermediários sem sentido).
+    """
     validate_name(name)
     with _lock_for(name):
         target = _confine(base, name)
         candidates = _list_backups(base, f"{name}.bak-")
         if candidates:
-            newest = candidates[0]
+            original = candidates[-1]
             if target.exists() or target.is_symlink():
                 _remove_path(target)
-            _move_atomic(newest, target)
-            restored = str(newest)
+            _move_atomic(original, target)
+            for stale in candidates[:-1]:
+                _remove_path(stale)
+            restored = str(original)
             path = str(target)
         else:
             ztarget = _confine(base, f"{name}.zip")
             zcands = _list_backups(base, f"{name}.zip.bak-")
             if not zcands:
                 raise ValueError(f"Sem backup para {name}")
-            newest = zcands[0]
+            original = zcands[-1]
             if ztarget.exists() or ztarget.is_symlink():
                 _remove_path(ztarget)
-            _move_atomic(newest, ztarget)
-            restored = str(newest)
+            _move_atomic(original, ztarget)
+            for stale in zcands[:-1]:
+                _remove_path(stale)
+            restored = str(original)
             path = str(ztarget)
         # Rollback invalida o sha conhecido: o conteúdo voltou no tempo.
         state = load_state(base)

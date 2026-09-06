@@ -282,6 +282,8 @@ const IC = {
 function statusTag(r) {
   if (r.error) return '<span class="tag tag-err">ERRO</span>';
   if (!r.mapped) return '<span class="tag tag-g">SEM MAPA</span>';
+  if (r.behind === true && (r.local_sha === null || r.local_sha === undefined))
+    return '<span class="tag tag-info">NUNCA SINCRONIZADO</span>';
   if (r.behind === true) return '<span class="tag tag-warn">DESATUALIZADO</span>';
   if (r.behind === false) return '<span class="tag tag-ok">ATUALIZADO</span>';
   return '<span class="tag tag-g">LISTADO</span>';
