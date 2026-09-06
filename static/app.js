@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const tbody = $("tbody"), logEl = $("log"), statusEl = $("status"), countEl = $("count");
 const loadbar = $("loadbar"), loadfill = $("loadfill");
 const pathInput = $("in-path"), autoBtn = $("btn-auto"), modeBtn = $("btn-mode");
+const btnAll = $("btn-all");
 let BASE = "";
 let ROWS = [];
 let ZIP_ONLY = false;
@@ -126,6 +127,22 @@ function paintChips() {
   if (si && si.value !== FQ) si.value = FQ;
 }
 
+function paintBtnAll() {
+  if (!btnAll) return;
+  const work = ROWS.some((r) => r.mapped && r.behind === true);
+  btnAll.classList.toggle("btn-primary", work);
+  btnAll.classList.toggle("btn-quiet", !work);
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const tag = (ev.target && ev.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const k = (ev.key || "").toLowerCase();
+  if (k === "e") { ev.preventDefault(); doScan(); }
+  else if (k === "c") { ev.preventDefault(); doCheck(); }
+});
+
 function setFilter(chip, announce) {
   if (chip && CHIPS[chip]) FCHIP = chip;
   storeSet("alldown.chip", FCHIP);
@@ -241,6 +258,7 @@ function statusTag(r) {
 function render() {
   updateCounts();
   paintChips();
+  paintBtnAll();
   const vis = visibleRows();
   const prevCount = countEl.textContent;
   const nextCount = `${vis.length} DE ${ROWS.length}`;
@@ -254,7 +272,7 @@ function render() {
   }
   if (!vis.length) {
     withViewTransition(() => {
-      tbody.innerHTML = '<tr class="empty"><td colspan="5">NADA BATE COM O FILTRO.<br><button class="btn" data-clear type="button">LIMPAR FILTRO</button></td></tr>';
+      tbody.innerHTML = '<tr class="empty"><td colspan="5">NADA BATE COM O FILTRO.<br><button class="btn btn-quiet" data-clear type="button">LIMPAR FILTRO</button></td></tr>';
     });
     return;
   }
@@ -268,7 +286,7 @@ function render() {
       ? `<div class="mono">PARECE SER O REPO “${esc(r.suggested_repo)}” — FALTA O DONO (OWNER).</div>`
       : "";
     const suggBtn = !r.mapped
-      ? `<div class="mini" style="margin-top:6px"><button class="btn btn-inv" data-suggest="${i}" type="button">SUGERIR DONOS</button></div>`
+      ? `<div class="mini" style="margin-top:6px"><button class="btn btn-quiet" data-suggest="${i}" type="button">SUGERIR DONOS</button></div>`
       : "";
     const suggList = (!r.mapped && r.suggestions && r.suggestions.length)
       ? `<div class="sugg">${r.suggestions.map((s, j) => `<button class="sugg-btn" data-pick="${i}:${j}" type="button" title="${esc(s.description || s.full_name)}"><b>${esc(s.full_name)}</b><span>★ ${s.stars}</span></button>`).join("")}</div>`
@@ -279,15 +297,15 @@ function render() {
       : `<div><strong>${esc(r.name)}</strong></div>${hint}${tried}`;
     const actionCell = r.mapped
       ? `<div class="mini">
-           <button class="btn" data-check1="${i}" type="button">CHECAR</button>
-           <button class="btn btn-inv" data-upd="${i}" type="button">ATUALIZAR</button>
-           <button class="btn" data-rb="${i}" type="button">REVERTER</button>
+           <button class="btn btn-quiet" data-check1="${i}" type="button">CHECAR</button>
+           <button class="btn btn-primary" data-upd="${i}" type="button">ATUALIZAR</button>
+           <button class="btn btn-quiet btn-danger" data-rb="${i}" type="button">REVERTER</button>
          </div>`
       : `<div class="urlrow">
            <label class="mono" for="url-${i}" style="align-self:center">URL</label>
            <input class="in" id="url-${i}" data-url="${i}" type="text" inputmode="url"
              autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repo…">
-           <button class="btn" data-save="${i}" type="button">SALVAR</button>
+           <button class="btn btn-quiet" data-save="${i}" type="button">SALVAR</button>
          </div>${suggBtn}${suggList}`;
     return `<tr class="${r.mapped ? "" : "unmapped"}">
       <td>${repoCell}</td>

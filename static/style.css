@@ -142,6 +142,7 @@ body {
 
 .btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   background: var(--surface-2); color: var(--text);
   border: 1px solid transparent;
   border-radius: 2px;
@@ -159,6 +160,18 @@ body {
 .btn-inv { background: transparent; border-color: var(--accent); color: var(--accent); }
 .btn-inv:hover { background: var(--accent-soft); }
 .btn[aria-pressed="true"].btn-inv { background: var(--accent); color: var(--accent-ink); }
+.btn:active { transform: scale(0.97); }
+.btn svg { width: 14px; height: 14px; flex: 0 0 auto; fill: currentColor; }
+.btn-quiet { background: transparent; border-color: var(--hairline); color: var(--text); }
+.btn-quiet:hover { background: var(--surface-2); border-color: var(--hairline); }
+.btn-danger { background: transparent; border-color: var(--hairline); color: var(--err); }
+.btn-danger:hover { background: rgba(240, 100, 108, 0.1); border-color: var(--err); color: var(--err); }
+.seg-group {
+  display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--hairline); border-radius: 2px; padding: 2px; gap: 2px;
+}
+.seg-group .btn-seg { border-color: transparent; background: transparent; min-height: 32px; }
+.seg-group .btn-seg[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .btn:focus-visible, .in:focus-visible, .chip:focus-visible,
 .search input:focus-visible, .log:focus-visible,
 .topnav-links a:focus-visible, .sugg-btn:focus-visible {
