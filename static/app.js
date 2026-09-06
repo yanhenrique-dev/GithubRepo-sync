@@ -32,13 +32,33 @@ if (!pathInput || !tbody) {
   throw new Error("alldown: DOM desatualizado (cache velho?)");
 }
 
-try {
-  pathInput.value = localStorage.getItem("alldown.path") || "";
-  autoDetect = localStorage.getItem("alldown.autodetect") !== "0";
-  const c = localStorage.getItem("alldown.chip");
+function storeGet(k) {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
+
+function storeSet(k, v) {
+  try { localStorage.setItem(k, v); } catch { /* ok */ }
+}
+
+function rearm(t, fn, ms) {
+  clearTimeout(t);
+  return setTimeout(fn, ms);
+}
+
+function paintToggle(btn, on, onText, offText) {
+  if (!btn) return;
+  btn.textContent = on ? onText : offText;
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.classList.toggle("btn-inv", on);
+}
+
+pathInput.value = storeGet("alldown.path") || "";
+autoDetect = storeGet("alldown.autodetect") !== "0";
+{
+  const c = storeGet("alldown.chip");
   if (c && CHIPS[c]) FCHIP = c;
-  FQ = localStorage.getItem("alldown.q") || "";
-} catch { /* sem localStorage, segue o jogo */ }
+}
+FQ = storeGet("alldown.q") || "";
 
 function visibleRows() {
   const q = FQ.trim().toLowerCase();
@@ -48,13 +68,13 @@ function visibleRows() {
 
 function updateCounts() {
   for (const k of Object.keys(CHIPS)) {
-    const el = document.getElementById("c-" + k);
+    const el = $("c-" + k);
     if (el) el.textContent = String(ROWS.filter(CHIPS[k]).length);
   }
 }
 
 function paintChips() {
-  const list = document.querySelectorAll ? document.querySelectorAll("[data-chip]") : [];
+  const list = document.querySelectorAll("[data-chip]");
   list.forEach((el) => {
     el.setAttribute("aria-pressed", el.dataset.chip === FCHIP ? "true" : "false");
   });
@@ -64,10 +84,8 @@ function paintChips() {
 
 function setFilter(chip, announce) {
   if (chip && CHIPS[chip]) FCHIP = chip;
-  try {
-    localStorage.setItem("alldown.chip", FCHIP);
-    localStorage.setItem("alldown.q", FQ);
-  } catch { /* ok */ }
+  storeSet("alldown.chip", FCHIP);
+  storeSet("alldown.q", FQ);
   render();
   if (announce) {
     const vis = visibleRows().length;
@@ -84,25 +102,19 @@ function clearFilter() {
 }
 
 function paintAutoBtn() {
-  if (!autoBtn) return;
-  autoBtn.textContent = autoDetect ? "AUTO: ON" : "AUTO: OFF";
-  autoBtn.setAttribute("aria-pressed", autoDetect ? "true" : "false");
-  autoBtn.classList.toggle("btn-inv", autoDetect);
+  paintToggle(autoBtn, autoDetect, "AUTO: ON", "AUTO: OFF");
 }
 
 function toggleAuto() {
   autoDetect = !autoDetect;
-  try { localStorage.setItem("alldown.autodetect", autoDetect ? "1" : "0"); } catch { /* ok */ }
+  storeSet("alldown.autodetect", autoDetect ? "1" : "0");
   paintAutoBtn();
   say(autoDetect ? "AUTO LIGADO — DETECTO E CHECO SOZINHO." : "AUTO DESLIGADO — TUDO MANUAL.");
   if (autoDetect && looksLikePath(pathInput.value.trim()) && pathInput.value.trim() !== BASE) doScan();
 }
 
 function paintMode() {
-  if (!modeBtn) return;
-  modeBtn.textContent = ZIP_ONLY ? "MODO: SÓ-ZIP" : "MODO: PASTAS";
-  modeBtn.setAttribute("aria-pressed", ZIP_ONLY ? "true" : "false");
-  modeBtn.classList.toggle("btn-inv", ZIP_ONLY);
+  paintToggle(modeBtn, ZIP_ONLY, "MODO: SÓ-ZIP", "MODO: PASTAS");
 }
 
 async function toggleMode() {
@@ -152,12 +164,6 @@ function looksLikePath(v) {
 
 function say(msg) {
   statusEl.textContent = msg;
-}
-
-function pushLog(lines) {
-  if (!lines || !lines.length) return;
-  logEl.textContent += lines.join("\n") + "\n";
-  logEl.scrollTop = logEl.scrollHeight;
 }
 
 async function refreshLog() {
@@ -257,7 +263,7 @@ async function doScan() {
   setBusy(true);
   barStart();
   BASE = typed;
-  try { localStorage.setItem("alldown.path", BASE); } catch { /* ok */ }
+  storeSet("alldown.path", BASE);
   say("ESCANEANDO…");
   try {
     const j = await api(`/api/scan?path=${encodeURIComponent(BASE)}`);
@@ -372,8 +378,8 @@ async function doSuggest(i) {
 }
 
 async function refreshToken() {
-  const tx = document.getElementById("token-tx");
-  const badge = document.getElementById("token-badge");
+  const tx = $("token-tx");
+  const badge = $("token-badge");
   if (!tx) return;
   const paint = (cls, msg) => {
     tx.textContent = msg;
@@ -409,16 +415,10 @@ $("btn-all").addEventListener("click", async () => {
   refreshLog();
 });
 tbody.addEventListener("click", (ev) => {
-  let t = ev.target;
-  if (!(t instanceof HTMLElement)) return;
-  while (t && t !== ev.currentTarget && !(t instanceof HTMLElement && (
-    t.dataset.clear !== undefined || t.dataset.save !== undefined ||
-    t.dataset.suggest !== undefined || t.dataset.pick !== undefined ||
-    t.dataset.upd !== undefined || t.dataset.rb !== undefined ||
-    t.dataset.check1 !== undefined))) {
-    t = t.parentNode;
-  }
-  if (!t || t === ev.currentTarget || !(t instanceof HTMLElement)) return;
+  const src = ev.target;
+  if (!(src instanceof HTMLElement)) return;
+  const t = src.closest("[data-clear],[data-save],[data-suggest],[data-pick],[data-upd],[data-rb],[data-check1]");
+  if (!t || !tbody.contains(t)) return;
   if (t.dataset.clear !== undefined) { clearFilter(); return; }
   if (t.dataset.save !== undefined) doSave(Number(t.dataset.save));
   if (t.dataset.suggest !== undefined) doSuggest(Number(t.dataset.suggest));
@@ -434,24 +434,23 @@ tbody.addEventListener("click", (ev) => {
 });
 $("form-path").addEventListener("submit", (e) => { e.preventDefault(); doScan(); });
 $("chips").addEventListener("click", (ev) => {
-  let t = ev.target;
-  while (t && t !== ev.currentTarget) {
-    if (t.dataset && t.dataset.chip) { setFilter(t.dataset.chip, true); return; }
-    t = t.parentNode;
-  }
+  const node = ev.target;
+  const el = node instanceof HTMLElement ? node : node && node.parentElement;
+  const t = el && el.closest ? el.closest("[data-chip]") : null;
+  if (t && $("chips").contains(t)) setFilter(t.dataset.chip, true);
 });
 let qdeb = null;
 $("in-search").addEventListener("input", (ev) => {
-  clearTimeout(qdeb);
-  qdeb = setTimeout(() => { FQ = ev.target.value; setFilter(null, true); }, 300);
+  qdeb = rearm(qdeb, () => { FQ = ev.target.value; setFilter(null, true); }, 300);
 });
 pathInput.addEventListener("input", () => {
   clearTimeout(debounce);
+  debounce = null;
   if (!autoDetect) return;
   const v = pathInput.value.trim();
   if (!looksLikePath(v)) return;
   if (v === BASE && !lastScanFailed) return;
-  debounce = setTimeout(doScan, 700);
+  debounce = rearm(debounce, doScan, 700);
 });
 setInterval(refreshLog, 8000);
 paintAutoBtn();

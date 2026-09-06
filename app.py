@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,14 +14,41 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.github import fetch_remote, repo_default_branch, suggest_repos, token_status
-from core.scanner import scan_base
+from core.github import (
+    fetch_remote,
+    invalidate_remote,
+    repo_default_branch,
+    suggest_repos,
+    token_status,
+    validate_branch,
+)
+from core.scanner import parse_github_url, scan_base
 from core.state import load_config, load_mapping, load_state, save_config, save_mapping, save_state
-from core.updater import rollback_one, update_one, update_zip_only
+from core.updater import rollback_one, update_one, update_zip_only, validate_name
 
 load_dotenv()
 
 LOG: deque[str] = deque(maxlen=300)
+
+# Lock por repo no backend: updates/rollbacks concorrentes do mesmo
+# `name` serializam (completa o lock por thread de core/updater).
+_async_guard = threading.Lock()
+_async_locks: dict[str, asyncio.Lock] = {}
+
+
+def _update_lock(name: str) -> asyncio.Lock:
+    with _async_guard:
+        lk = _async_locks.get(name)
+        if lk is None:
+            lk = _async_locks[name] = asyncio.Lock()
+        return lk
+
+
+def _check_name(name: str) -> None:
+    try:
+        validate_name(name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 def log(msg: str) -> None:
@@ -120,8 +148,13 @@ async def api_check(path: str):
 @app.post("/api/map")
 def api_map(body: MapBody):
     b = resolve_base(body.path)
-    if not body.url or "github.com" not in body.url:
+    _check_name(body.name)
+    if parse_github_url(body.url or "") is None:
         raise HTTPException(400, "URL de GitHub inválida.")
+    try:
+        validate_branch(body.branch or "main")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     mapping = load_mapping(b)
     mapping[body.name] = {"url": body.url.strip(), "branch": body.branch or "main"}
     save_mapping(b, mapping)
@@ -140,57 +173,62 @@ def api_mode(body: ModeBody):
 @app.post("/api/update")
 async def api_update(body: UpdateBody):
     b = resolve_base(body.path)
-    items = {i["name"]: i for i in scan_base(b)}
-    it = items.get(body.name)
-    if it is None or not it["mapped"]:
-        raise HTTPException(400, f"{body.name} não mapeado para GitHub.")
-    token = os.getenv("GITHUB_TOKEN", "").strip()
-    branch = it["branch"]
-    try:
-        remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
-    except ValueError:
-        if it.get("branch_explicit"):
-            raise HTTPException(502, f"Falha ao consultar GitHub: branch {branch} não existe.")
-        resolved = await repo_default_branch(it["owner"], it["repo"])  # type: ignore[arg-type]
-        if not resolved or resolved == branch:
-            raise HTTPException(502, "Falha ao consultar GitHub: repo ou branch não existe.")
-        branch = resolved
+    _check_name(body.name)
+    async with _update_lock(body.name):
+        items = {i["name"]: i for i in scan_base(b)}
+        it = items.get(body.name)
+        if it is None or not it["mapped"]:
+            raise HTTPException(400, f"{body.name} não mapeado para GitHub.")
+        token = os.getenv("GITHUB_TOKEN", "").strip()
+        branch = it["branch"]
         try:
             remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+        except ValueError:
+            if it.get("branch_explicit"):
+                raise HTTPException(502, f"Falha ao consultar GitHub: branch {branch} não existe.")
+            resolved = await repo_default_branch(it["owner"], it["repo"])  # type: ignore[arg-type]
+            if not resolved or resolved == branch:
+                raise HTTPException(502, "Falha ao consultar GitHub: repo ou branch não existe.")
+            branch = resolved
+            try:
+                remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
+        except HTTPException:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
-    zip_only = load_config(b)["zip_only"]
-    try:
-        if zip_only:
-            res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token)
-        else:
-            res = await asyncio.to_thread(
-                update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token
-            )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Falha ao atualizar: {exc}")
-    state = load_state(b)
-    entry = state.get(body.name, {})
-    entry["local_sha"] = remote["remote_sha"]
-    state[body.name] = entry
-    save_state(b, state)
-    log(f"UPDATE {body.name} OK backup={res['backup']}")
-    return {"ok": True, **res, "remote_sha": remote["remote_sha"]}
+        zip_only = load_config(b)["zip_only"]
+        try:
+            if zip_only:
+                res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token)
+            else:
+                res = await asyncio.to_thread(
+                    update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, f"Falha ao atualizar: {exc}")
+        invalidate_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+        state = load_state(b)
+        entry = state.get(body.name, {})
+        entry["local_sha"] = remote["remote_sha"]
+        state[body.name] = entry
+        save_state(b, state)
+        log(f"UPDATE {body.name} OK backup={res['backup']}")
+        return {"ok": True, **res, "remote_sha": remote["remote_sha"]}
 
 
 @app.post("/api/rollback")
 async def api_rollback(body: UpdateBody):
     b = resolve_base(body.path)
-    try:
-        res = await asyncio.to_thread(rollback_one, b, body.name)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, str(exc))
-    log(f"ROLLBACK {body.name} <- {res['restored_from']}")
-    return {"ok": True, **res}
+    _check_name(body.name)
+    async with _update_lock(body.name):
+        try:
+            res = await asyncio.to_thread(rollback_one, b, body.name)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, str(exc))
+        log(f"ROLLBACK {body.name} <- {res['restored_from']}")
+        return {"ok": True, **res}
 
 
 @app.get("/api/log")

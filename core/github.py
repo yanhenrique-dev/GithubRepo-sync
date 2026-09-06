@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -15,6 +17,43 @@ RATE_TTL = 60  # 1 min p/ status de cota
 
 _branch_cache: dict[str, tuple[float, str | None]] = {}
 BRANCH_TTL = 3600  # 1 h p/ branch padrão
+
+_OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_BRANCH_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
+
+
+def validate_owner_repo(value: str, what: str = "owner") -> str:
+    if not isinstance(value, str) or not _OWNER_REPO_RE.fullmatch(value) or value in (".", ".."):
+        raise ValueError(f"{what} inválido: {value!r}")
+    return value
+
+
+def validate_branch(branch: str) -> str:
+    if (
+        not isinstance(branch, str)
+        or not branch
+        or len(branch) > 255
+        or not _BRANCH_RE.fullmatch(branch)
+        or branch in (".", "..")
+        or branch.startswith("/")
+        or branch.endswith("/")
+        or "//" in branch
+        or ".." in branch.split("/")
+        or branch.endswith(".lock")
+        or any(c in branch for c in ("~", "^", ":", "?", "*", "[", "\\"))
+    ):
+        raise ValueError(f"branch inválido: {branch!r}")
+    return branch
+
+
+def _q_branch(branch: str) -> str:
+    # Branch pode conter `/` válido (feature/x): quote p/ não virar path.
+    return quote(validate_branch(branch), safe="")
+
+
+def invalidate_remote(owner: str, repo: str, branch: str) -> None:
+    """Invalida o cache de fetch_remote pós-update (evita sha velho)."""
+    _cache.pop(f"{owner}/{repo}@{branch}", None)
 
 
 def _headers() -> dict[str, str]:
@@ -82,6 +121,8 @@ async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
 
 async def repo_default_branch(owner: str, repo: str) -> str | None:
     """Branch padrão real do repo (ex.: master). None = mantém o atual."""
+    validate_owner_repo(owner, "owner")
+    validate_owner_repo(repo, "repo")
     key = f"{owner}/{repo}"
     now = time.time()
     if key in _branch_cache and now - _branch_cache[key][0] < BRANCH_TTL:
@@ -99,13 +140,16 @@ async def repo_default_branch(owner: str, repo: str) -> str | None:
 
 
 async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
+    validate_owner_repo(owner, "owner")
+    validate_owner_repo(repo, "repo")
+    branch_q = _q_branch(branch)
     key = f"{owner}/{repo}@{branch}"
     now = time.time()
     if key in _cache and now - _cache[key][0] < TTL:
         return _cache[key][1]
 
     async with httpx.AsyncClient(timeout=20, headers=_headers()) as client:
-        commit_resp = await client.get(f"{API}/repos/{owner}/{repo}/commits/{branch}")
+        commit_resp = await client.get(f"{API}/repos/{owner}/{repo}/commits/{branch_q}")
         if commit_resp.status_code in (404, 422):
             raise ValueError(f"Repo ou branch não existe: {key}")
         if commit_resp.status_code == 403 and "rate limit" in commit_resp.text.lower():
@@ -122,7 +166,7 @@ async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
         "remote_message": (commit.get("commit") or {}).get("message", "")[:120],
         "release_tag": release.get("tag_name"),
         "zipball_url": release.get("zipball_url")
-        or f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}",
+        or f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch_q}",
     }
     _cache[key] = (now, out)
     return out

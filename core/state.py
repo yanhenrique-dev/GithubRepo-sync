@@ -2,7 +2,25 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
+
+
+def _atomic_write_text(fp: Path, text: str) -> None:
+    """Escrita atômica: tmp no mesmo dir + os.replace (nunca meio-arquivo)."""
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmps = tempfile.mkstemp(dir=str(fp.parent), prefix=fp.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmps, fp)
+    except Exception:
+        try:
+            os.unlink(tmps)
+        except OSError:
+            pass
+        raise
 
 
 def repos_file(base: Path) -> Path:
@@ -34,7 +52,7 @@ def load_mapping(base: Path) -> dict[str, dict]:
 
 def save_mapping(base: Path, mapping: dict[str, dict]) -> None:
     fp = repos_file(base)
-    fp.write_text(json.dumps(mapping, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write_text(fp, json.dumps(mapping, indent=2, ensure_ascii=False) + "\n")
 
 
 def load_state(base: Path) -> dict[str, dict]:
@@ -50,8 +68,7 @@ def load_state(base: Path) -> dict[str, dict]:
 
 def save_state(base: Path, state: dict[str, dict]) -> None:
     fp = state_file(base)
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    fp.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write_text(fp, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
 
 
 def load_config(base: Path) -> dict:
@@ -69,5 +86,4 @@ def load_config(base: Path) -> dict:
 
 def save_config(base: Path, config: dict) -> None:
     fp = base / ".alldown" / "config.json"
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    fp.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write_text(fp, json.dumps(config, indent=2, ensure_ascii=False) + "\n")
