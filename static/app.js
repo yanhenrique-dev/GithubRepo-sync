@@ -247,6 +247,14 @@ function esc(v) {
   }[c]));
 }
 
+/* Ícones MynaUI (MIT) inline — stroke herda currentColor. */
+const IC = {
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 13.626 1.606 1.722c.886.95 1.329 1.424 1.825 1.574.436.131.9.096 1.315-.1.473-.224.852-.761 1.612-1.836L18 7"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11.966 11.136-.004 8M19.825 17c4.495-3.16.475-7.73-3.706-7.73C13.296-1.732-3.265 7.368 4.074 15.662m11.07 1.156L11.962 20 8.78 16.818"/></svg>',
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12h-15m5.625 6L4.5 12l5.625-6"/></svg>',
+  bolt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.564 13.708a.504.504 0 0 0-.496-.565H7a.506.506 0 0 1-.461-.702l3.907-9.128a.5.5 0 0 1 .46-.313h4.518c.353 0 .594.36.465.694l-2.225 5.712a.506.506 0 0 0 .464.694H17c.412 0 .647.479.398.813l-7.47 10.046c-.062.083-.191.03-.18-.072z"/></svg>',
+};
+
 function statusTag(r) {
   if (r.error) return '<span class="tag tag-err">ERRO</span>';
   if (!r.mapped) return '<span class="tag tag-g">SEM MAPA</span>';
@@ -286,7 +294,7 @@ function render() {
       ? `<div class="mono">PARECE SER O REPO “${esc(r.suggested_repo)}” — FALTA O DONO (OWNER).</div>`
       : "";
     const suggBtn = !r.mapped
-      ? `<div class="mini" style="margin-top:6px"><button class="btn btn-quiet" data-suggest="${i}" type="button">SUGERIR DONOS</button></div>`
+      ? `<div class="mini" style="margin-top:6px"><button class="btn btn-quiet" data-suggest="${i}" type="button">${IC.bolt}SUGERIR DONOS</button></div>`
       : "";
     const suggList = (!r.mapped && r.suggestions && r.suggestions.length)
       ? `<div class="sugg">${r.suggestions.map((s, j) => `<button class="sugg-btn" data-pick="${i}:${j}" type="button" title="${esc(s.description || s.full_name)}"><b>${esc(s.full_name)}</b><span>★ ${s.stars}</span></button>`).join("")}</div>`
@@ -297,15 +305,15 @@ function render() {
       : `<div><strong>${esc(r.name)}</strong></div>${hint}${tried}`;
     const actionCell = r.mapped
       ? `<div class="mini">
-           <button class="btn btn-quiet" data-check1="${i}" type="button">CHECAR</button>
-           <button class="btn btn-primary" data-upd="${i}" type="button">ATUALIZAR</button>
-           <button class="btn btn-quiet btn-danger" data-rb="${i}" type="button">REVERTER</button>
+           <button class="btn btn-quiet" data-check1="${i}" type="button">${IC.check}CHECAR</button>
+           <button class="btn btn-primary" data-upd="${i}" type="button">${IC.cloud}ATUALIZAR</button>
+           <button class="btn btn-quiet btn-danger" data-rb="${i}" type="button">${IC.back}REVERTER</button>
          </div>`
       : `<div class="urlrow">
            <label class="mono" for="url-${i}" style="align-self:center">URL</label>
            <input class="in" id="url-${i}" data-url="${i}" type="text" inputmode="url"
              autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repo…">
-           <button class="btn btn-quiet" data-save="${i}" type="button">SALVAR</button>
+           <button class="btn btn-quiet" data-save="${i}" type="button">${IC.check}SALVAR</button>
          </div>${suggBtn}${suggList}`;
     return `<tr class="${r.mapped ? "" : "unmapped"}">
       <td>${repoCell}</td>

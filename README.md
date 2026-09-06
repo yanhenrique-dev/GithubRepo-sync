@@ -91,3 +91,5 @@ Por pasta escaneada, o estado mora em `<pasta>/.alldown/` (`mapping.json`, `stat
 ## Licença
 
 MIT — use, quebre, melhore.
+
+Ícones [MynaUI](https://mynaui.com/icons) (MIT © Praveen Juge), embutidos como SVG inline.
