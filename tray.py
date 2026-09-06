@@ -120,7 +120,31 @@ def wait_ready(proc: subprocess.Popen, timeout: float = 30) -> bool:
     return port_open()
 
 
+def _ensure_shortcut() -> None:
+    """Na primeira execução, cria o atalho no menu de aplicativos."""
+    try:
+        apps = Path.home() / ".local" / "share" / "applications"
+        apps.mkdir(parents=True, exist_ok=True)
+        dest = apps / "reporefresh.desktop"
+        content = (
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=RepoRefresh\n"
+            "Comment=Updater local de repos GitHub (bandeja do sistema)\n"
+            f"Exec={ROOT / 'reporefresh.sh'}\n"
+            f"Icon={ROOT / 'static' / 'tray-red.png'}\n"
+            "Terminal=false\n"
+            "Categories=Development;\n"
+            "StartupNotify=false\n"
+        )
+        if not dest.exists() or dest.read_text(encoding="utf-8") != content:
+            dest.write_text(content, encoding="utf-8")
+    except OSError:
+        pass  # sem atalho não impede o app de rodar
+
+
 def main() -> int:
+    _ensure_shortcut()
     if lock_alive() or port_open():
         webbrowser.open(URL)  # já rodando: só abre
         return 0
