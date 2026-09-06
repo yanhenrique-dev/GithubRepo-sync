@@ -24,7 +24,7 @@ from core.github import (
 )
 from core.scanner import parse_github_url, scan_base
 from core.state import load_config, load_mapping, load_state, save_config, save_mapping, save_state
-from core.updater import rollback_one, update_one, update_zip_only, validate_name
+from core.updater import is_forbidden_base, rollback_one, update_one, update_zip_only, validate_name
 
 load_dotenv()
 
@@ -93,6 +93,8 @@ def resolve_base(path: str) -> Path:
     base = Path(path.strip()).expanduser().resolve()
     if not base.is_dir():
         raise HTTPException(400, f"Pasta não existe: {base}")
+    if is_forbidden_base(base):
+        raise HTTPException(400, "Pasta de sistema não permitida.")
     return base
 
 

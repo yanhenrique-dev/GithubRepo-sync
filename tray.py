@@ -24,9 +24,26 @@ import webbrowser
 ROOT = Path(__file__).resolve().parent
 VENV_PY = ROOT / ".venv" / "bin" / "python"
 PY = str(VENV_PY) if VENV_PY.exists() else sys.executable
-PORT = int(os.getenv("REPOREFRESH_PORT", sys.argv[1] if len(sys.argv) > 1 else 8000))
+def _parse_port() -> int:
+    raw = os.getenv("REPOREFRESH_PORT")
+    if raw is None and len(sys.argv) > 1 and sys.argv[1].lstrip("+-").isdigit():
+        raw = sys.argv[1]
+    if raw is None:
+        return 8000
+    try:
+        port = int(raw)
+    except (TypeError, ValueError):
+        raise SystemExit(f"Porta inválida: {raw!r}")
+    if not 1024 <= port <= 65535:
+        raise SystemExit(f"Porta fora de 1024-65535: {port}")
+    return port
+
+
+PORT = _parse_port()
 URL = f"http://127.0.0.1:{PORT}/"
-LOCK = Path(f"/tmp/reporefresh-{PORT}.lock")
+_RUN_DIR = Path(os.getenv("XDG_RUNTIME_DIR", Path.home() / ".cache" / "reporefresh"))
+_RUN_DIR.mkdir(parents=True, exist_ok=True)
+LOCK = _RUN_DIR / f"reporefresh-{PORT}.lock"
 LOG = Path(f"/tmp/reporefresh-{PORT}.log")
 ICON = ROOT / "static" / "tray-red.png"
 
@@ -55,6 +72,22 @@ def lock_alive() -> bool:
         except OSError:
             pass
         return False
+
+
+def claim_lock(pid: int) -> bool:
+    """Cria o lock com O_EXCL: dois inícios simultâneos, só um vence."""
+    try:
+        fd = os.open(str(LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        if lock_alive():
+            return False
+        try:  # stale foi limpo: tenta de novo uma vez
+            fd = os.open(str(LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            return False
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(str(pid))
+    return True
 
 
 def start_server() -> subprocess.Popen:
@@ -91,7 +124,10 @@ def main() -> int:
         return 1
 
     proc = start_server()
-    LOCK.write_text(str(proc.pid))
+    if not claim_lock(proc.pid):
+        proc.terminate()
+        webbrowser.open(URL)  # outro venceu a corrida: só abre
+        return 0
     if not wait_ready(proc):
         print(f"Servidor não subiu — veja {LOG}", file=sys.stderr)
         proc.terminate()

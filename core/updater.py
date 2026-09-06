@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 import re
 import shutil
 import tempfile
@@ -19,6 +20,20 @@ from .state import load_state, save_state
 # Hosts p/ os quais o GITHUB_TOKEN pode ser enviado. Redirect p/ qualquer
 # outro host perde o Authorization (evita vazar token p/ host arbitrário).
 _ALLOWED_TOKEN_HOSTS = frozenset({"api.github.com", "codeload.github.com"})
+_MAX_BYTES = 500 * 1024 * 1024  # 500 MB: sem teto, zip gigante esgota /tmp
+
+_FORBIDDEN_BASES = frozenset({
+    "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64",
+    "/proc", "/root", "/run", "/sbin", "/sys", "/usr", "/var",
+})
+
+
+def is_forbidden_base(base: Path) -> bool:
+    try:
+        resolved = base.resolve()
+    except OSError:
+        return True
+    return str(resolved) in _FORBIDDEN_BASES
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -101,14 +116,13 @@ def _headers_for(host: str, token: str) -> dict[str, str]:
 
 
 def download_zip(url: str, token: str = "") -> Path:
-    u = urlsplit(url)
-    if u.scheme not in ("https", "http") or not u.hostname:
-        raise ValueError("URL inválida")
+    _check_https_host(url)
     tmpdir = Path(tempfile.mkdtemp(prefix="alldown-"))
     tmp = tmpdir / "src.zip"
     try:
         cur = url
         for _ in range(_MAX_REDIRECTS + 1):
+            _check_https_host(cur, "Redirect")
             host = (urlsplit(cur).hostname or "").lower()
             headers = _headers_for(host, token)
             with httpx.stream(
@@ -118,18 +132,22 @@ def download_zip(url: str, token: str = "") -> Path:
                     loc = resp.headers.get("location")
                     if not loc:
                         raise ValueError("Redirect sem Location")
-                    nxt = urljoin(cur, loc)
-                    nu = urlsplit(nxt)
-                    if nu.scheme not in ("https", "http") or not nu.hostname:
-                        raise ValueError("Redirect inválido")
-                    cur = nxt
+                    cur = urljoin(cur, loc)
                     continue
                 resp.raise_for_status()
+                try:
+                    announced = int(resp.headers.get("content-length", "0") or 0)
+                except ValueError:
+                    announced = 0
+                if announced > _MAX_BYTES:
+                    raise ValueError(f"Download grande demais ({announced} bytes)")
                 total = 0
                 with tmp.open("wb") as fh:
                     for chunk in resp.iter_bytes(65536):
                         fh.write(chunk)
                         total += len(chunk)
+                        if total > _MAX_BYTES:
+                            raise ValueError(f"Download passou de {_MAX_BYTES} bytes")
                 break
         else:
             raise ValueError("Redirects demais")
@@ -140,6 +158,22 @@ def download_zip(url: str, token: str = "") -> Path:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise ValueError("Download não é um .zip válido")
     return tmp
+
+
+def _check_https_host(url: str, what: str = "URL") -> str:
+    u = urlsplit(url)
+    host = (u.hostname or "").lower()
+    if u.scheme != "https" or not host:
+        raise ValueError(f"{what} inválida (só https)")
+    try:
+        if ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback:
+            raise ValueError(f"{what} com IP privado/bloqueado")
+    except ValueError as exc:
+        if "privado" in str(exc):
+            raise
+    if host == "169.254.169.254":
+        raise ValueError(f"{what} com host bloqueado")
+    return host
 
 
 def _check_zip_entry(filename: str) -> None:
@@ -229,7 +263,7 @@ def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_ur
             shutil.rmtree(zip_path.parent, ignore_errors=True)
 
 
-def replace_zip_file(base: Path, name: str, src_zip: Path) -> dict:
+def replace_zip_file(base: Path, name: str, src_zip: Path, make_backup: bool = True) -> dict:
     """Modo só-zip: troca o .zip sem encostar na pasta. Puro local, testável."""
     validate_name(name)
     with _lock_for(name):
@@ -237,7 +271,7 @@ def replace_zip_file(base: Path, name: str, src_zip: Path) -> dict:
             raise ValueError("Arquivo baixado não é um .zip válido")
         target = _confine(base, f"{name}.zip")
         backup: str | None = None
-        if target.exists() or target.is_symlink():
+        if (target.exists() or target.is_symlink()) and make_backup:
             bkp = _unique_backup(base, name, suffix=".zip")
             _move_atomic(target, bkp)
             backup = str(bkp)
@@ -264,39 +298,13 @@ def replace_zip_file(base: Path, name: str, src_zip: Path) -> dict:
 
 def update_zip_only(base: Path, name: str, zip_url: str, token: str = "", make_backup: bool = True) -> dict:
     validate_name(name)
-    with _lock_for(name):
-        zip_path = download_zip(zip_url, token)
-        try:
-            # Reuso interno sem relockar duas vezes (RLock permite, mas evita
-            # revalidar/relockar à toa): troca direta aqui.
-            if not zipfile.is_zipfile(zip_path):
-                raise ValueError("Download não é um .zip válido")
-            target = _confine(base, f"{name}.zip")
-            backup: str | None = None
-            if (target.exists() or target.is_symlink()) and make_backup:
-                bkp = _unique_backup(base, name, suffix=".zip")
-                _move_atomic(target, bkp)
-                backup = str(bkp)
-            try:
-                _move_atomic(zip_path, target)
-            except Exception:
-                try:
-                    if target.exists() or target.is_symlink():
-                        _remove_path(target)
-                    if backup is not None:
-                        _move_atomic(Path(backup), target)
-                except Exception:
-                    pass
-                raise
-            state = load_state(base)
-            entry = state.get(name, {})
-            entry["backup_path"] = backup
-            entry["updated_at"] = _stamp()
-            state[name] = entry
-            save_state(base, state)
-            return {"name": name, "backup": backup, "path": str(target)}
-        finally:
-            shutil.rmtree(zip_path.parent, ignore_errors=True)
+    zip_path = download_zip(zip_url, token)
+    try:
+        if not zipfile.is_zipfile(zip_path):
+            raise ValueError("Download não é um .zip válido")
+        return replace_zip_file(base, name, zip_path, make_backup=make_backup)
+    finally:
+        shutil.rmtree(zip_path.parent, ignore_errors=True)
 
 
 def _list_backups(base: Path, prefix: str) -> list[Path]:

@@ -38,8 +38,10 @@ def scan_base(base: Path) -> list[dict]:
         return []
     mapping = load_mapping(base)
 
-    dirs = {p.name: p for p in base.iterdir() if p.is_dir() and p.name != ".alldown"}
-    zips = {p.stem: p for p in base.iterdir() if p.is_file() and p.suffix.lower() == ".zip"}
+    dirs = {p.name: p for p in base.iterdir()
+            if p.is_dir() and not p.is_symlink() and p.name != ".alldown" and not p.name.startswith(".")}
+    zips = {p.stem: p for p in base.iterdir()
+            if p.is_file() and not p.is_symlink() and p.suffix.lower() == ".zip" and not p.name.startswith(".")}
     names = sorted(set(dirs) | set(zips) | set(mapping))
 
     items: list[dict] = []
