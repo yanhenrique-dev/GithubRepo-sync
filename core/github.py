@@ -29,7 +29,7 @@ def validate_owner_repo(value: str, what: str = "owner") -> str:
 
 
 def validate_branch(branch: str) -> str:
-    if (
+    bad = (
         not isinstance(branch, str)
         or not branch
         or len(branch) > 255
@@ -41,7 +41,8 @@ def validate_branch(branch: str) -> str:
         or ".." in branch.split("/")
         or branch.endswith(".lock")
         or any(c in branch for c in ("~", "^", ":", "?", "*", "[", "\\"))
-    ):
+    )
+    if bad:
         raise ValueError(f"branch inválido: {branch!r}")
     return branch
 
@@ -87,24 +88,53 @@ async def token_status() -> dict:
     try:
         async with _client() as client:
             r = await client.get(f"{API}/rate_limit")
-        if r.status_code == 401:
-            out["valid"] = False
-        elif r.status_code == 200:
-            core = (r.json().get("resources") or {}).get("core", {})
-            out["remaining"] = core.get("remaining")
-            out["limit"] = core.get("limit")
-            out["valid"] = True if configured else None
     except Exception:
-        pass  # sem rede = status desconhecido, não erro
+        return out  # sem rede: desconhecido, SEM envenenar o cache
+    if r.status_code == 401:
+        out["valid"] = False
+    elif r.status_code == 403:
+        out["valid"] = False if configured else None
+        out["rate_limited"] = True
+    elif r.status_code == 200:
+        core = (r.json().get("resources") or {}).get("core", {})
+        out["remaining"] = core.get("remaining")
+        out["limit"] = core.get("limit")
+        out["valid"] = True if configured else None
     _rate_cache["status"] = (now, out)
     return out
 
 
-def _shorten(text: str, limit: int = 120) -> str:
+def _shorten(text: str | None, limit: int = 120) -> str:
     text = (text or "").strip()
     if len(text) <= limit:
         return text
     return text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _suggest_item(it: dict) -> dict:
+    return {
+        "full_name": it.get("full_name"),
+        "url": it.get("html_url"),
+        "stars": it.get("stargazers_count", 0),
+        "description": _shorten(it.get("description")),
+    }
+
+
+async def _suggest_exact(q: str) -> list[dict]:
+    parts = q.strip().split("/", 1)
+    if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+        return []
+    owner, repo = parts[0].strip(), parts[1].strip()
+    if not _OWNER_REPO_RE.fullmatch(owner) or not _OWNER_REPO_RE.fullmatch(repo):
+        return []
+    try:
+        async with _client() as client:
+            r = await client.get(f"{API}/repos/{owner}/{repo}")
+        if r.status_code != 200:
+            return []
+        return [_suggest_item(r.json())]
+    except Exception:
+        return []
 
 
 def _check_rate_limit(resp: httpx.Response) -> None:
@@ -115,10 +145,18 @@ def _check_rate_limit(resp: httpx.Response) -> None:
 
 
 async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
-    """Candidatos owner/repo pela Search API (ordem de estrelas)."""
+    """Candidatos owner/repo pela Search API (ordem de estrelas).
+
+    Se a busca parece owner/repo exato, tenta direto antes (a Search
+    pode esconder o exato fora do top por estrelas).
+    """
     q = (query or "").strip()
     if len(q) < 2:
         raise ValueError("Busca muito curta.")
+    if "/" in q:
+        direct = await _suggest_exact(q)
+        if direct:
+            return direct
     async with _client() as client:
         r = await client.get(
             f"{API}/search/repositories",

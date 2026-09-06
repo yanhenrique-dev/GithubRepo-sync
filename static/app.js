@@ -496,7 +496,8 @@ async function refreshToken() {
   };
   try {
     const j = await api("/api/token");
-    if (j.valid === false) paint("tok-err", "TOKEN INVÁLIDO");
+    if (j.rate_limited) paint("tok-warn", "RATE LIMIT ESGOTADO");
+    else if (j.valid === false) paint("tok-err", "TOKEN INVÁLIDO");
     else if (j.configured && j.valid) paint("tok-ok", `TOKEN OK · ${j.remaining}/${j.limit}`);
     else if (!j.configured) paint("tok-warn", j.limit ? `SEM TOKEN · ${j.remaining}/${j.limit}` : "SEM TOKEN · 60/H");
     else paint("", "API: ?");

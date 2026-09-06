@@ -99,3 +99,48 @@ def test_fetch_resolve_nome_via_id(monkeypatch):
     gh._branch_cache.clear()
     out = _run(gh.fetch_remote("ruvnet", "wifi-densepose", "main"))
     assert out["canonical_url"] == "https://github.com/ruvnet/RuView"
+
+
+def test_token_403_marca_rate_limited(monkeypatch):
+    def handler(url, kwargs):
+        return _resp(403, text="API rate limit exceeded")
+
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    _install_fake(monkeypatch, handler)
+    gh._rate_cache.clear()
+    out = _run(gh.token_status())
+    assert out["rate_limited"] is True
+    assert out["valid"] is False
+
+
+def test_token_offline_nao_envenena_cache(monkeypatch):
+    def boom(url, kwargs):
+        raise ConnectionError("sem rede")
+
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    _install_fake(monkeypatch, boom)
+    gh._rate_cache.clear()
+    out1 = _run(gh.token_status())
+    assert out1["valid"] is None
+    assert "status" not in gh._rate_cache
+
+    def ok(url, kwargs):
+        return _resp(200, json_data={"resources": {"core": {"remaining": 59, "limit": 60}}})
+
+    _install_fake(monkeypatch, ok)
+    out2 = _run(gh.token_status())
+    assert out2 == {"configured": True, "valid": True, "remaining": 59, "limit": 60}
+
+
+def test_suggest_exato_owner_repo(monkeypatch):
+    def handler(url, kwargs):
+        if url.endswith("/repos/o/exato"):
+            return _resp_at(url, 200, json_data={
+                "full_name": "o/exato", "html_url": "https://github.com/o/exato",
+                "stargazers_count": 3, "description": "x"})
+        raise AssertionError(f"search não devia ser chamada: {url}")
+
+    _install_fake(monkeypatch, handler)
+    out = _run(gh.suggest_repos("o/exato"))
+    assert out == [{"full_name": "o/exato", "url": "https://github.com/o/exato",
+                    "stars": 3, "description": "x"}]

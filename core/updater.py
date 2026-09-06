@@ -51,11 +51,20 @@ def validate_name(name: str) -> str:
     return name
 
 
+def _is_within(base: Path, target: Path) -> bool:
+    """True se target resolvido está dentro de base (ou é a base)."""
+    b = base.resolve()
+    try:
+        t = target.resolve()
+    except OSError:
+        return False
+    return t == b or b in t.parents
+
+
 def _confine(base: Path, leaf: str) -> Path:
     """Junta base+leaf e garante que continua dentro da base."""
-    b = base.resolve()
-    t = (b / leaf).resolve()
-    if t != b and b not in t.parents:
+    t = (base.resolve() / leaf).resolve()
+    if not _is_within(base, t):
         raise ValueError(f"caminho escapa a base: {leaf!r}")
     return t
 
@@ -210,7 +219,7 @@ def extract_root(zip_path: Path, dest: Path) -> Path:
         for info in infos:
             _check_zip_entry(info.filename)
             target = (base / info.filename).resolve()
-            if target != base and base not in target.parents:
+            if not _is_within(base, target):
                 raise ValueError(f"entrada escapa o destino: {info.filename!r}")
         for info in infos:
             target = base / info.filename
@@ -325,15 +334,10 @@ def _list_backups(base: Path, prefix: str) -> list[Path]:
     except OSError:
         return []
     out = []
-    b = base.resolve()
     for p in entries:
         if not p.name.startswith(prefix):
             continue
-        try:
-            r = p.resolve()
-        except OSError:
-            continue
-        if r != b and b not in r.parents:
+        if not _is_within(base, p):
             continue
         out.append(p)
     return sorted(out, key=lambda p: p.name, reverse=True)

@@ -162,6 +162,8 @@ def explain_dir(dir_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
     notes: list[str] = []
     try:
         children = {p.name.lower(): p for p in dir_path.iterdir() if p.is_file()}
+    except PermissionError:
+        return None, ["sem permissão na pasta"]
     except OSError:
         return None, ["pasta ilegível"]
     order = [c for c in CANDIDATES if c != "readme.md"]
