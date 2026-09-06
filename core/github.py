@@ -13,6 +13,9 @@ TTL = 600  # 10 min
 _rate_cache: dict[str, tuple[float, dict]] = {}
 RATE_TTL = 60  # 1 min p/ status de cota
 
+_branch_cache: dict[str, tuple[float, str | None]] = {}
+BRANCH_TTL = 3600  # 1 h p/ branch padrão
+
 
 def _headers() -> dict[str, str]:
     token = os.getenv("GITHUB_TOKEN", "").strip()
@@ -77,6 +80,24 @@ async def suggest_repos(query: str, limit: int = 5) -> list[dict]:
     return items
 
 
+async def repo_default_branch(owner: str, repo: str) -> str | None:
+    """Branch padrão real do repo (ex.: master). None = mantém o atual."""
+    key = f"{owner}/{repo}"
+    now = time.time()
+    if key in _branch_cache and now - _branch_cache[key][0] < BRANCH_TTL:
+        return _branch_cache[key][1]
+    out: str | None = None
+    try:
+        async with _client() as client:
+            r = await client.get(f"{API}/repos/{owner}/{repo}")
+        if r.status_code == 200:
+            out = r.json().get("default_branch") or None
+    except Exception:
+        pass
+    _branch_cache[key] = (now, out)
+    return out
+
+
 async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
     key = f"{owner}/{repo}@{branch}"
     now = time.time()
@@ -85,7 +106,7 @@ async def fetch_remote(owner: str, repo: str, branch: str = "main") -> dict:
 
     async with httpx.AsyncClient(timeout=20, headers=_headers()) as client:
         commit_resp = await client.get(f"{API}/repos/{owner}/{repo}/commits/{branch}")
-        if commit_resp.status_code == 404:
+        if commit_resp.status_code in (404, 422):
             raise ValueError(f"Repo ou branch não existe: {key}")
         if commit_resp.status_code == 403 and "rate limit" in commit_resp.text.lower():
             raise RuntimeError("Rate limit do GitHub estourado. Defina GITHUB_TOKEN no .env")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .state import load_mapping
 from .zipmeta import explain_dir, explain_zip, strip_branch_suffix
@@ -10,14 +11,16 @@ from .zipmeta import explain_dir, explain_zip, strip_branch_suffix
 def parse_github_url(url: str) -> tuple[str, str] | None:
     if not url:
         return None
-    cleaned = url.strip().rstrip("/").removesuffix(".git")
-    parts = cleaned.split("github.com/")
-    if len(parts) != 2:
+    try:
+        u = urlsplit(url.strip() if "://" in url else "https://" + url.strip())
+    except ValueError:
         return None
-    owner_repo = parts[1].split("/")
-    if len(owner_repo) < 2 or not owner_repo[0] or not owner_repo[1]:
+    if (u.hostname or "").lower() not in ("github.com", "www.github.com"):
         return None
-    return owner_repo[0], owner_repo[1]
+    segs = [s for s in u.path.strip("/").split("/") if s]
+    if len(segs) < 2 or not segs[0] or not segs[1]:
+        return None
+    return segs[0], segs[1].removesuffix(".git")
 
 
 def name_to_github(name: str) -> tuple[str, str] | None:
@@ -44,6 +47,7 @@ def scan_base(base: Path) -> list[dict]:
         entry = mapping.get(name, {})
         url: str | None = entry.get("url")  # type: ignore[assignment]
         branch: str = entry.get("branch", "main")  # type: ignore[assignment]
+        branch_explicit = "branch" in entry
         auto = False
 
         owner_repo = parse_github_url(url) if url else None
@@ -80,6 +84,7 @@ def scan_base(base: Path) -> list[dict]:
                 "zip_path": str(zips[name]) if name in zips else None,
                 "github_url": url,
                 "branch": branch,
+                "branch_explicit": branch_explicit,
                 "mapped": owner_repo is not None,
                 "auto": auto,
                 "owner": owner_repo[0] if owner_repo else None,

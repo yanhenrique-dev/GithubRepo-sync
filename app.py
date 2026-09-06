@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.github import fetch_remote, suggest_repos, token_status
+from core.github import fetch_remote, repo_default_branch, suggest_repos, token_status
 from core.scanner import scan_base
 from core.state import load_config, load_mapping, load_state, save_config, save_mapping, save_state
 from core.updater import rollback_one, update_one, update_zip_only
@@ -88,15 +88,31 @@ async def api_check(path: str):
     if not items:
         return {"path": str(b), "items": []}
     state = load_state(b)
-    out = []
-    for it in items:
-        try:
-            remote = await fetch_remote(it["owner"], it["repo"], it["branch"])  # type: ignore[arg-type]
-        except Exception as exc:  # noqa: BLE001 - erro por linha, não derruba tudo
-            out.append({**it, "error": str(exc)})
-            continue
-        local_sha = (state.get(it["name"], {}) or {}).get("local_sha")
-        out.append({**it, **remote, "local_sha": local_sha, "behind": local_sha != remote["remote_sha"]})
+    sem = asyncio.Semaphore(5)
+
+    async def _one(it: dict) -> dict:
+        async with sem:
+            try:
+                branch = it["branch"]
+                try:
+                    remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+                except ValueError:
+                    # Branch mapeado não existe (ex.: assumimos main, real é master)?
+                    # Resolve o padrão uma vez e tenta de novo. Branch fixado
+                    # pelo usuário não é adivinhado: erro vai p/ a linha.
+                    if it.get("branch_explicit"):
+                        raise
+                    resolved = await repo_default_branch(it["owner"], it["repo"])  # type: ignore[arg-type]
+                    if not resolved or resolved == branch:
+                        raise
+                    branch = resolved
+                    remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+            except Exception as exc:  # noqa: BLE001 - erro por linha, não derruba tudo
+                return {**it, "error": str(exc)}
+            local_sha = (state.get(it["name"], {}) or {}).get("local_sha")
+            return {**it, **remote, "local_sha": local_sha, "behind": local_sha != remote["remote_sha"]}
+
+    out = list(await asyncio.gather(*(_one(it) for it in items)))
     log(f"CHECK {b} -> {len(out)} repos.")
     return {"path": str(b), "items": out}
 
@@ -129,8 +145,22 @@ async def api_update(body: UpdateBody):
     if it is None or not it["mapped"]:
         raise HTTPException(400, f"{body.name} não mapeado para GitHub.")
     token = os.getenv("GITHUB_TOKEN", "").strip()
+    branch = it["branch"]
     try:
-        remote = await fetch_remote(it["owner"], it["repo"], it["branch"])  # type: ignore[arg-type]
+        remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+    except ValueError:
+        if it.get("branch_explicit"):
+            raise HTTPException(502, f"Falha ao consultar GitHub: branch {branch} não existe.")
+        resolved = await repo_default_branch(it["owner"], it["repo"])  # type: ignore[arg-type]
+        if not resolved or resolved == branch:
+            raise HTTPException(502, "Falha ao consultar GitHub: repo ou branch não existe.")
+        branch = resolved
+        try:
+            remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Falha ao consultar GitHub: {exc}")
     zip_only = load_config(b)["zip_only"]
@@ -139,7 +169,7 @@ async def api_update(body: UpdateBody):
             res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token)
         else:
             res = await asyncio.to_thread(
-                update_one, b, body.name, it["owner"], it["repo"], it["branch"], remote["zipball_url"], token
+                update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token
             )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Falha ao atualizar: {exc}")
