@@ -177,6 +177,13 @@ def main() -> int:
     signal.signal(signal.SIGINT, _on_signal)
     try:
         icon.run()
+    except Exception as exc:  # sem bandeja (ex.: backend ausente): segura o servidor no foreground
+        print(f"Sem bandeja ({exc}); servidor segue no ar em {URL} — Ctrl+C para parar.",
+              file=sys.stderr)
+        try:
+            proc.wait()
+        except KeyboardInterrupt:
+            pass
     finally:
         stop_proc(proc)
         LOCK.unlink(missing_ok=True)
