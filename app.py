@@ -25,7 +25,7 @@ from core.github import (
 )
 from core.scanner import parse_github_url, scan_base
 from core.state import load_config, load_mapping, load_state, save_config, save_mapping, save_state
-from core.updater import is_forbidden_base, rollback_one, update_one, update_zip_only, validate_name
+from core.updater import _speed_of, is_forbidden_base, rollback_one, update_one, update_zip_only, validate_name
 
 load_dotenv()
 
@@ -246,12 +246,15 @@ async def api_update(body: UpdateBody):
         zip_only = load_config(b)["zip_only"]
         make_backup = load_config(b)["backup"]
         try:
+            stats: dict = {}
             if zip_only:
-                res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token, make_backup)
+                res = await asyncio.to_thread(update_zip_only, b, body.name, remote["zipball_url"], token, make_backup, stats)
             else:
                 res = await asyncio.to_thread(
-                    update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token, make_backup
+                    update_one, b, body.name, it["owner"], it["repo"], branch, remote["zipball_url"], token, make_backup, stats
                 )
+            res.update(stats)
+            res["speed_bps"] = _speed_of(stats)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"Falha ao atualizar: {exc}")
         invalidate_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
@@ -260,7 +263,10 @@ async def api_update(body: UpdateBody):
         entry["local_sha"] = remote["remote_sha"]
         state[body.name] = entry
         save_state(b, state)
-        log(f"UPDATE {body.name} OK backup={res['backup']}")
+        log(f"UPDATE {body.name} OK backup={res['backup']} "
+            f"dl={res.get('download_bytes') or '?'}B "
+            f"{res.get('speed_bps') or '?'}B/s "
+            f"old={res.get('old_bytes') or '?'}B new={res.get('new_bytes') or '?'}B")
         return {"ok": True, **res, "remote_sha": remote["remote_sha"]}
 
 

@@ -128,7 +128,24 @@ def _headers_for(host: str, token: str) -> dict[str, str]:
     return h
 
 
-def download_zip(url: str, token: str = "") -> Path:
+def _dir_bytes(path: Path) -> int:
+    """Tamanho somado de arquivos (sem seguir symlinks)."""
+    total = 0
+    try:
+        for root, _dirs, files in os.walk(path, followlinks=False):
+            for f in files:
+                try:
+                    fp = Path(root) / f
+                    if not fp.is_symlink():
+                        total += fp.stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return total
+
+
+def download_zip(url: str, token: str = "", stats: dict | None = None) -> Path:
     _check_https_host(url)
     tmpdir = Path(tempfile.mkdtemp(prefix="alldown-"))
     tmp = tmpdir / "src.zip"
@@ -164,6 +181,9 @@ def download_zip(url: str, token: str = "") -> Path:
                             raise ValueError(f"Download passou de {_MAX_BYTES} bytes")
                         if time.monotonic() - t0 > _DOWNLOAD_TIMEOUT:
                             raise ValueError(f"Download passou de {_DOWNLOAD_TIMEOUT:.0f}s")
+                if stats is not None:
+                    stats["download_bytes"] = total
+                    stats["download_secs"] = max(time.monotonic() - t0, 0.001)
                 break
         else:
             raise ValueError("Redirects demais")
@@ -235,17 +255,19 @@ def extract_root(zip_path: Path, dest: Path) -> Path:
     return dest
 
 
-def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_url: str, token: str = "", make_backup: bool = True) -> dict:
+def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_url: str, token: str = "", make_backup: bool = True, stats: dict | None = None) -> dict:
     target = _target_in_base(base, name)
     with _lock_for(name):
         if target.exists() and not target.is_dir() and not target.is_symlink():
             raise ValueError(f"{name} existe e não é pasta")
 
-        zip_path = download_zip(zip_url, token)
+        zip_path = download_zip(zip_url, token, stats=stats)
         try:
             work = Path(tempfile.mkdtemp(prefix="alldown-x-"))
             try:
                 root = extract_root(zip_path, work / "extracted")
+                old_bytes = _dir_bytes(target) if target.is_dir() and not target.is_symlink() else None
+                new_bytes = _dir_bytes(root)
 
                 backup: str | None = None
                 if (target.exists() or target.is_symlink()) and make_backup:
@@ -276,11 +298,18 @@ def update_one(base: Path, name: str, owner: str, repo: str, branch: str, zip_ur
                 entry["updated_at"] = _stamp()
                 state[name] = entry
                 save_state(base, state)
-                return {"name": name, "backup": backup, "path": str(target)}
+                return {"name": name, "backup": backup, "path": str(target),
+                        "old_bytes": old_bytes, "new_bytes": new_bytes}
             finally:
                 shutil.rmtree(work, ignore_errors=True)
         finally:
             shutil.rmtree(zip_path.parent, ignore_errors=True)
+
+
+def _speed_of(stats: dict) -> float | None:
+    dl_b = stats.get("download_bytes") or 0
+    dl_s = stats.get("download_secs") or 0
+    return round(dl_b / dl_s, 1) if dl_b and dl_s else None
 
 
 def replace_zip_file(base: Path, name: str, src_zip: Path, make_backup: bool = True) -> dict:
@@ -316,13 +345,18 @@ def replace_zip_file(base: Path, name: str, src_zip: Path, make_backup: bool = T
         return {"name": name, "backup": backup, "path": str(target)}
 
 
-def update_zip_only(base: Path, name: str, zip_url: str, token: str = "", make_backup: bool = True) -> dict:
+def update_zip_only(base: Path, name: str, zip_url: str, token: str = "", make_backup: bool = True, stats: dict | None = None) -> dict:
     validate_name(name)
-    zip_path = download_zip(zip_url, token)
+    target = _confine(base, f"{name}.zip")
+    old_bytes = target.stat().st_size if target.is_file() and not target.is_symlink() else None
+    zip_path = download_zip(zip_url, token, stats=stats)
     try:
         if not zipfile.is_zipfile(zip_path):
             raise ValueError("Download não é um .zip válido")
-        return replace_zip_file(base, name, zip_path, make_backup=make_backup)
+        out = replace_zip_file(base, name, zip_path, make_backup=make_backup)
+        out["old_bytes"] = old_bytes
+        out["new_bytes"] = (stats or {}).get("download_bytes")
+        return out
     finally:
         shutil.rmtree(zip_path.parent, ignore_errors=True)
 

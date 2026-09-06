@@ -182,7 +182,7 @@ def test_updates_rapidos_backups_distintos(tmp_path, monkeypatch):
     (tmp_path / "proj" / "v.txt").write_text("v0")
     vers = iter(["v1", "v2"])
 
-    def fake_dl(url, token=""):
+    def fake_dl(url, token="", **k):
         v = next(vers)
         d = tmp_path / f"dl-{v}"
         d.mkdir(exist_ok=True)
@@ -286,7 +286,7 @@ def test_api_update_invalida_cache(tmp_path, monkeypatch):
 
     monkeypatch.setattr(appmod, "fetch_remote", fake_fetch)
     monkeypatch.setattr(appmod, "update_one",
-                         lambda b, n, o, r, br, z, t="", make_backup=True: {"name": n, "backup": None, "path": str(b / n)})
+                         lambda b, n, o, r, br, z, t="", make_backup=True, stats=None: {"name": n, "backup": None, "path": str(b / n)})
     gh._cache["o/r@main"] = (1.0, {"velho": True})
     out = asyncio.run(appmod.api_update(appmod.UpdateBody(path=str(tmp_path), name="proj")))
     assert out["remote_sha"] == "NEW"

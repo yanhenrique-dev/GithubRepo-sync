@@ -419,6 +419,18 @@ async function doCheck() {
   refreshLog();
 }
 
+function fmtSize(bytes) {
+  if (bytes == null) return "?";
+  const u = ["B", "KB", "MB", "GB"];
+  let v = bytes, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(".", ",")} ${u[i]}`;
+}
+
+function fmtSpeed(bps) {
+  return bps == null ? "?" : `${fmtSize(bps)}/s`;
+}
+
 async function doUpdate(name, quiet) {
   say(`ATUALIZANDO ${name}…`);
   if (!quiet) barStart();
@@ -431,9 +443,11 @@ async function doUpdate(name, quiet) {
     const ix = ROWS.findIndex((r) => r.name === name);
     if (ix >= 0) ROWS[ix] = { ...ROWS[ix], local_sha: j.remote_sha, behind: false };
     render();
+    const dl = `BAIXOU ${fmtSize(j.download_bytes)} A ${fmtSpeed(j.speed_bps)}`;
+    const sz = `PACOTE ${fmtSize(j.old_bytes)} → ${fmtSize(j.new_bytes)}`;
     say(ZIP_ONLY
-      ? `OK — ${name} ZIP TROCADO. BACKUP: ${j.backup || "SEM BACKUP (ZIP NOVO)"}.`
-      : `OK — ${name} ATUALIZADO. BACKUP: ${j.backup || "SEM BACKUP (PASTA NOVA)"}.`);
+      ? `OK — ${name} ZIP TROCADO. ${dl}. ${sz}. BACKUP: ${j.backup || "SEM BACKUP (ZIP NOVO)"}.`
+      : `OK — ${name} ATUALIZADO. ${dl}. ${sz}. BACKUP: ${j.backup || "SEM BACKUP (PASTA NOVA)"}.`);
   } catch (e) { say(`FALHA EM ${name}: ${e.message}`); }
   if (!quiet) barStop();
   refreshLog();
