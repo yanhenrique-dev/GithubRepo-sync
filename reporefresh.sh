@@ -2,5 +2,9 @@
 # RepoRefresh: sobe o servidor, abre o navegador, ícone na bandeja.
 # Uso: ./reporefresh.sh [porta]
 set -euo pipefail
-cd "$(dirname "$0")"
+DIR="$(dirname "$0")"
+cd "$DIR"
+if [ -x "$DIR/.venv/bin/python" ]; then
+  exec "$DIR/.venv/bin/python" "$DIR/tray.py" "${1:-${REPOREFRESH_PORT:-8000}}"
+fi
 exec ./tray.py "${1:-${REPOREFRESH_PORT:-8000}}"

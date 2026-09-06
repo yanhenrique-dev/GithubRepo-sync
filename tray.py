@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 _VENV_PY = Path(__file__).resolve().parent / ".venv" / "bin" / "python"
-if _VENV_PY.exists() and Path(sys.executable).resolve() != _VENV_PY.resolve():
+if _VENV_PY.exists() and sys.prefix == sys.base_prefix:
+    # Fora de qualquer venv (ex.: python do sistema no menu): re-exec no venv.
+    # (Comparar executáveis quebra quando o sistema tem o mesmo Python 3.14.)
     os.execv(str(_VENV_PY), [str(_VENV_PY), str(Path(__file__).resolve()), *sys.argv[1:]])
 
 import socket
@@ -182,7 +184,7 @@ def _run() -> int:
         from PIL import Image
         import pystray
         from pystray import Menu, MenuItem
-    except ImportError as exc:
+    except Exception as exc:  # ImportError ou backend sem display no import
         _tlog(f"sem pystray/pillow: {exc}")
         _notify("Falta pystray/pillow no .venv")
         print("Falta pystray/pillow: .venv/bin/pip install pystray pillow", file=sys.stderr)
