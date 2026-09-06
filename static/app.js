@@ -13,6 +13,50 @@ let lastScanFailed = false;
 let FCHIP = "all";
 let FQ = "";
 
+/* PARTE 2/2 — animação 100% CSS/vanilla, sem mudar comportamento/rotas/IDs. */
+const RM = (typeof window !== "undefined" && window.matchMedia)
+  ? window.matchMedia("(prefers-reduced-motion: reduce)")
+  : { matches: false };
+let countPulseT = null;
+
+function withViewTransition(commit) {
+  if (!RM.matches && typeof document !== "undefined" && document.startViewTransition) {
+    try {
+      document.startViewTransition(() => { commit(); });
+      return;
+    } catch { /* fallback silencioso */ }
+  }
+  commit();
+}
+
+function staggerEnter() {
+  if (RM.matches) return;
+  const rows = tbody.querySelectorAll("tr:not(.empty)");
+  const n = Math.min(rows.length, 12);
+  for (let k = 0; k < n; k++) {
+    const tr = rows[k];
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (!tr.isConnected) return;
+        tr.classList.add("enter");
+        const done = () => tr.classList.remove("enter");
+        tr.addEventListener("animationend", done, { once: true });
+        tr.addEventListener("transitionend", done, { once: true });
+        setTimeout(done, 400);
+      }, k * 25);
+    });
+  }
+}
+
+function pulseCount(prev, next) {
+  if (!countEl || RM.matches || prev === next) return;
+  countEl.classList.remove("enter");
+  void countEl.offsetWidth;
+  countEl.classList.add("enter");
+  clearTimeout(countPulseT);
+  countPulseT = setTimeout(() => countEl.classList.remove("enter"), 300);
+}
+
 const CHIPS = {
   all: () => true,
   mapped: (r) => !!r.mapped,
@@ -198,16 +242,23 @@ function render() {
   updateCounts();
   paintChips();
   const vis = visibleRows();
-  countEl.textContent = `${vis.length} DE ${ROWS.length}`;
+  const prevCount = countEl.textContent;
+  const nextCount = `${vis.length} DE ${ROWS.length}`;
+  countEl.textContent = nextCount;
+  pulseCount(prevCount, nextCount);
   if (!ROWS.length) {
-    tbody.innerHTML = '<tr class="empty"><td colspan="5">NENHUM REPO ESCANEADO.</td></tr>';
+    withViewTransition(() => {
+      tbody.innerHTML = '<tr class="empty"><td colspan="5">NENHUM REPO ESCANEADO.</td></tr>';
+    });
     return;
   }
   if (!vis.length) {
-    tbody.innerHTML = '<tr class="empty"><td colspan="5">NADA BATE COM O FILTRO.<br><button class="btn" data-clear type="button">LIMPAR FILTRO</button></td></tr>';
+    withViewTransition(() => {
+      tbody.innerHTML = '<tr class="empty"><td colspan="5">NADA BATE COM O FILTRO.<br><button class="btn" data-clear type="button">LIMPAR FILTRO</button></td></tr>';
+    });
     return;
   }
-  tbody.innerHTML = vis.map((r) => {
+  const html = vis.map((r) => {
     const i = ROWS.indexOf(r);
     const autoChip = r.auto ? ' <span class="tag tag-info">AUTO</span>' : "";
     const tried = (r.tried && r.tried.length)
@@ -246,6 +297,10 @@ function render() {
       <td>${actionCell}</td>
     </tr>`;
   }).join("");
+  withViewTransition(() => {
+    tbody.innerHTML = html;
+    staggerEnter();
+  });
 }
 
 async function api(path, opts) {
