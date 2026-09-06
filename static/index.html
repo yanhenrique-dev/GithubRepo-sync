@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#09090b">
+<meta name="description" content="RepoRefresh — atualiza repos GitHub baixados em zip.">
+<title>RepoRefresh</title>
+<link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/icon-16.png">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body>
+<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-token" id="token-badge" aria-live="polite">
+      <span class="tok-dot" aria-hidden="true"></span><span id="token-tx">API: …</span>
+    </div>
+
+    <nav class="side-nav" aria-label="Seções">
+      <p class="eyebrow">Seções</p>
+      <a href="#panel-ctrl">Controle</a>
+      <a href="#panel-repos">Repositórios</a>
+      <a href="#panel-log">Log</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <div id="loadbar" class="loadbar" role="progressbar" aria-label="Carregando" hidden><div id="loadfill" class="loadfill"></div></div>
+
+    <main id="conteudo">
+      <section aria-labelledby="t-controle" class="card card-sticky" id="panel-ctrl">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">01 / Controle</p>
+            <h2 id="t-controle">Pasta dos repos</h2>
+          </div>
+        </div>
+        <form id="form-path" class="row" action="#" onsubmit="return false">
+          <label for="in-path" class="lbl">Caminho da pasta</label>
+          <input id="in-path" name="repo-path" type="text" inputmode="text"
+                 autocomplete="off" spellcheck="false"
+                 placeholder="ex: /home/voce/repos…" class="in">
+          <span class="btns">
+            <button type="button" id="btn-scan" class="btn btn-primary">Escanear</button>
+            <button type="button" id="btn-check" class="btn btn-inv">Checar</button>
+            <button type="button" id="btn-all" class="btn btn-primary">Atualizar tudo</button>
+            <button type="button" id="btn-auto" class="btn btn-inv" aria-pressed="true">Auto: on</button>
+            <button type="button" id="btn-mode" class="btn" aria-pressed="false" title="PASTAS = atualiza a pasta extraída. SÓ-ZIP = troca só o .zip.">Modo: pastas</button>
+          </span>
+        </form>
+        <details class="hintbox">
+          <summary>Limites da API do GitHub</summary>
+          <p class="hint">Sem token o GitHub só deixa ~60 checks/hora. Gere um em github.com/settings/tokens (só leitura) e ponha como GITHUB_TOKEN no .env — com token são 5000/hora.</p>
+        </details>
+        <p id="status" class="status" aria-live="polite">Cole a pasta acima — detecção é automática.</p>
+      </section>
+
+      <section aria-labelledby="t-repos" class="card" id="panel-repos">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">02 / Repositórios</p>
+            <h2 id="t-repos">Detectados na pasta</h2>
+          </div>
+          <span id="count" class="count" aria-live="polite">0 itens</span>
+        </div>
+        <div class="filters" role="group" aria-label="Filtrar repos por status">
+          <span class="chips" id="chips">
+            <button type="button" class="chip" data-chip="all" aria-pressed="true">Todos <b id="c-all">0</b></button>
+            <button type="button" class="chip" data-chip="mapped" aria-pressed="false">Mapeados <b id="c-mapped">0</b></button>
+            <button type="button" class="chip" data-chip="unmapped" aria-pressed="false">Sem dono <b id="c-unmapped">0</b></button>
+            <button type="button" class="chip" data-chip="behind" aria-pressed="false">Desatualizados <b id="c-behind">0</b></button>
+            <button type="button" class="chip" data-chip="ok" aria-pressed="false">Atualizados <b id="c-ok">0</b></button>
+            <button type="button" class="chip" data-chip="error" aria-pressed="false">Erros <b id="c-error">0</b></button>
+          </span>
+          <label class="search" for="in-search">Buscar
+            <input id="in-search" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="nome…">
+          </label>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <caption class="tbl-cap">Repos detectados na pasta. Use os filtros acima para reduzir a lista.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Repo</th>
+                <th scope="col">Local</th>
+                <th scope="col">Remoto</th>
+                <th scope="col">Status</th>
+                <th scope="col">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr class="empty"><td colspan="5">Nenhum repo escaneado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="t-log" class="card" id="panel-log">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">03 / Log</p>
+            <h2 id="t-log">Atividade</h2>
+          </div>
+        </div>
+        <pre id="log" class="log" aria-live="polite" tabindex="0">REPOREFRESH PRONTO.
+</pre>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="/static/app.js?v=17" defer></script>
+</body>
+</html>
