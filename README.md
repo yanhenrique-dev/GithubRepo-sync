@@ -34,7 +34,7 @@
 
 ```bash
 # 1. Clone e entre
-git clone -b beta https://github.com/yanhenrique-dev/GithubRepo-sync.git
+git clone https://github.com/yanhenrique-dev/GithubRepo-sync.git
 cd GithubRepo-sync
 
 # 2. Ambiente
