@@ -46,6 +46,15 @@ _RUN_DIR = Path(os.getenv("XDG_RUNTIME_DIR", Path.home() / ".cache" / "reporefre
 _RUN_DIR.mkdir(parents=True, exist_ok=True)
 LOCK = _RUN_DIR / f"reporefresh-{PORT}.lock"
 LOG = Path(f"/tmp/reporefresh-{PORT}.log")
+TRAY_LOG = Path(f"/tmp/reporefresh-{PORT}-tray.log")
+
+
+def _tlog(msg: str) -> None:
+    try:
+        with open(TRAY_LOG, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except OSError:
+        pass
 ICON = ROOT / "static" / "tray-red.png"
 
 
@@ -145,7 +154,9 @@ def _ensure_shortcut() -> None:
 
 def main() -> int:
     _ensure_shortcut()
+    _tlog("inicio")
     if lock_alive() or port_open():
+        _tlog("já rodando: só abrir navegador")
         webbrowser.open(URL)  # já rodando: só abre
         return 0
     try:
@@ -159,13 +170,16 @@ def main() -> int:
     proc = start_server()
     if not claim_lock(proc.pid):
         proc.terminate()
+        _tlog("outro venceu a corrida: só abrir navegador")
         webbrowser.open(URL)  # outro venceu a corrida: só abre
         return 0
     if not wait_ready(proc):
+        _tlog("servidor não subiu")
         print(f"Servidor não subiu — veja {LOG}", file=sys.stderr)
         proc.terminate()
         LOCK.unlink(missing_ok=True)
         return 1
+    _tlog("servidor ok, abrindo navegador")
     webbrowser.open(URL)
 
     def restart(icon, _item):
@@ -190,6 +204,7 @@ def main() -> int:
     )
 
     def _on_signal(signum, _frame):
+        _tlog(f"sinal {signum}: parando servidor")
         stop_proc(proc)
         LOCK.unlink(missing_ok=True)
         try:
@@ -202,6 +217,7 @@ def main() -> int:
     try:
         icon.run()
     except Exception as exc:  # sem bandeja (ex.: backend ausente): segura o servidor no foreground
+        _tlog(f"sem bandeja: {exc}")
         print(f"Sem bandeja ({exc}); servidor segue no ar em {URL} — Ctrl+C para parar.",
               file=sys.stderr)
         try:
