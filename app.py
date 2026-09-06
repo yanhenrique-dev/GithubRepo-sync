@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import time
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -29,6 +30,8 @@ from core.updater import is_forbidden_base, rollback_one, update_one, update_zip
 load_dotenv()
 
 LOG: deque[str] = deque(maxlen=300)
+
+CHECK_ONE_TIMEOUT = 60.0  # um repo lento vira erro na linha, não trava o lote
 
 # Lock por repo no backend: updates/rollbacks concorrentes do mesmo
 # `name` serializam (completa o lock por thread de core/updater).
@@ -104,9 +107,9 @@ def index():
 
 
 @app.get("/api/scan")
-def api_scan(path: str):
+async def api_scan(path: str):
     b = resolve_base(path)
-    items = scan_base(b)
+    items = await asyncio.to_thread(scan_base, b)
     state = load_state(b)
     for it in items:
         st = state.get(it["name"], {})
@@ -120,7 +123,7 @@ def api_scan(path: str):
 @app.get("/api/check")
 async def api_check(path: str):
     b = resolve_base(path)
-    items = [i for i in scan_base(b) if i["mapped"]]
+    items = [i for i in await asyncio.to_thread(scan_base, b) if i["mapped"]]
     if not items:
         return {"path": str(b), "items": []}
     state = load_state(b)
@@ -128,10 +131,15 @@ async def api_check(path: str):
 
     async def _one(it: dict) -> dict:
         async with sem:
+            t0 = time.monotonic()
             try:
                 branch = it["branch"]
                 try:
-                    remote = await fetch_remote(it["owner"], it["repo"], branch)  # type: ignore[arg-type]
+                    remote = await asyncio.wait_for(
+                        fetch_remote(it["owner"], it["repo"], branch), CHECK_ONE_TIMEOUT  # type: ignore[arg-type]
+                    )
+                except (asyncio.TimeoutError, TimeoutError):
+                    return {**it, "error": f"Tempo esgotado ({CHECK_ONE_TIMEOUT:.0f}s) consultando GitHub"}
                 except ValueError:
                     # Branch mapeado não existe (ex.: assumimos main, real é master)?
                     # Resolve o padrão uma vez e tenta de novo. Branch fixado
@@ -146,6 +154,9 @@ async def api_check(path: str):
             except Exception as exc:  # noqa: BLE001 - erro por linha, não derruba tudo
                 return {**it, "error": str(exc)}
             local_sha = (state.get(it["name"], {}) or {}).get("local_sha")
+            elapsed = time.monotonic() - t0
+            if elapsed > 10:
+                log(f"CHECK lento: {it['name']} levou {elapsed:.1f}s.")
             merged = {**it, **remote, "local_sha": local_sha, "behind": local_sha != remote["remote_sha"]}
             canon = remote.get("canonical_url")
             if canon and canon != it.get("github_url"):

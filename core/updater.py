@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 import zipfile
 from datetime import datetime
@@ -21,6 +22,9 @@ from .state import load_state, save_state
 # outro host perde o Authorization (evita vazar token p/ host arbitrário).
 _ALLOWED_TOKEN_HOSTS = frozenset({"api.github.com", "codeload.github.com"})
 _MAX_BYTES = 500 * 1024 * 1024  # 500 MB: sem teto, zip gigante esgota /tmp
+_DOWNLOAD_TIMEOUT = 300.0  # 5 min totais: servidor lento não prende para sempre
+_MAX_ENTRIES = 50000  # zip-bomb: entradas demais nem começam
+_MAX_TOTAL_UNCOMPRESSED = 2 * 1024 * 1024 * 1024  # 2 GB somados
 
 _FORBIDDEN_BASES = frozenset({
     "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64",
@@ -142,12 +146,15 @@ def download_zip(url: str, token: str = "") -> Path:
                 if announced > _MAX_BYTES:
                     raise ValueError(f"Download grande demais ({announced} bytes)")
                 total = 0
+                t0 = time.monotonic()
                 with tmp.open("wb") as fh:
                     for chunk in resp.iter_bytes(65536):
                         fh.write(chunk)
                         total += len(chunk)
                         if total > _MAX_BYTES:
                             raise ValueError(f"Download passou de {_MAX_BYTES} bytes")
+                        if time.monotonic() - t0 > _DOWNLOAD_TIMEOUT:
+                            raise ValueError(f"Download passou de {_DOWNLOAD_TIMEOUT:.0f}s")
                 break
         else:
             raise ValueError("Redirects demais")
@@ -196,6 +203,10 @@ def extract_root(zip_path: Path, dest: Path) -> Path:
     base = dest.resolve()
     with zipfile.ZipFile(zip_path) as zf:
         infos = zf.infolist()
+        if len(infos) > _MAX_ENTRIES:
+            raise ValueError(f"Zip com entradas demais ({len(infos)})")
+        if sum(i.file_size for i in infos) > _MAX_TOTAL_UNCOMPRESSED:
+            raise ValueError("Zip grande demais descomprimido")
         for info in infos:
             _check_zip_entry(info.filename)
             target = (base / info.filename).resolve()
