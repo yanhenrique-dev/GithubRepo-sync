@@ -152,9 +152,28 @@ def _ensure_shortcut() -> None:
         pass  # sem atalho não impede o app de rodar
 
 
+def _notify(msg: str) -> None:
+    """Erro visível: no menu não há terminal, stderr morre calado."""
+    try:
+        subprocess.run(["notify-send", "RepoRefresh", msg], timeout=5, check=False)
+    except OSError:
+        pass
+
+
 def main() -> int:
     _ensure_shortcut()
     _tlog("inicio")
+    try:
+        return _run()
+    except Exception:
+        import traceback
+        _tlog("FATAL:\n" + traceback.format_exc())
+        _notify("Falha ao iniciar — veja /tmp/reporefresh-8000-tray.log"
+                .replace("8000", str(PORT)))
+        return 1
+
+
+def _run() -> int:
     if lock_alive() or port_open():
         _tlog("já rodando: só abrir navegador")
         webbrowser.open(URL)  # já rodando: só abre
@@ -163,7 +182,9 @@ def main() -> int:
         from PIL import Image
         import pystray
         from pystray import Menu, MenuItem
-    except ImportError:
+    except ImportError as exc:
+        _tlog(f"sem pystray/pillow: {exc}")
+        _notify("Falta pystray/pillow no .venv")
         print("Falta pystray/pillow: .venv/bin/pip install pystray pillow", file=sys.stderr)
         return 1
 
