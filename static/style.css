@@ -40,7 +40,7 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: 68px; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 68px; }
 body {
   margin: 0;
   background: var(--bg);
@@ -70,7 +70,7 @@ body {
   border-bottom: 1px solid var(--hairline);
 }
 .topnav-inner {
-  max-width: 1400px; height: 52px; margin: 0 auto;
+  max-width: 1600px; height: 52px; margin: 0 auto;
   padding: 0 20px;
   display: flex; align-items: center; gap: 14px;
 }
@@ -90,7 +90,7 @@ body {
 .topnav .search { margin-left: auto; }
 
 /* Faixa única larga */
-.page { max-width: 1400px; margin: 0 auto; padding: 72px 20px 48px; }
+.page { max-width: 1600px; margin: 0 auto; padding: 72px 20px 48px; }
 #conteudo { display: grid; gap: 16px; scroll-margin-top: 68px; }
 #panel-ctrl, #panel-repos, #panel-log { scroll-margin-top: 68px; }
 
@@ -304,6 +304,10 @@ body {
 .tag-g { color: var(--secondary); }
 
 .mini { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (min-width: 901px) {
+  .tbl td:last-child .mini { flex-wrap: nowrap; }
+  .tbl td:last-child .mini .btn { white-space: nowrap; }
+}
 .mini .btn { padding: 6px 12px; min-height: 30px; font-size: 12px; border-radius: 2px; }
 .urlrow { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
 .urlrow .in { padding: 8px 12px; font-size: 12px; }
@@ -353,6 +357,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .loadbar.run .loadfill { animation: none; width: 100%; }
 }
