@@ -31,7 +31,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt ruff==0.16.8 pyright==1.1.414
       - run: ruff check app.py core tray.py
-      - run: pyright --pythonpath python app.py core tray.py
+      - run: pyright --pythonpath "$pythonLocation/bin/python" app.py core tray.py
 
   frontend:
     runs-on: ubuntu-latest
