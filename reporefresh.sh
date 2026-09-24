@@ -4,7 +4,13 @@
 set -euo pipefail
 DIR="$(dirname "$0")"
 cd "$DIR"
-if [ -x "$DIR/.venv/bin/python" ]; then
-  exec "$DIR/.venv/bin/python" "$DIR/tray.py" "${1:-${REPOREFRESH_PORT:-8000}}"
+if [ "$#" -gt 0 ]; then
+  if [ -x "$DIR/.venv/bin/python" ]; then
+    exec "$DIR/.venv/bin/python" "$DIR/tray.py" "$1"
+  fi
+  exec ./tray.py "$1"
 fi
-exec ./tray.py "${1:-${REPOREFRESH_PORT:-8000}}"
+if [ -x "$DIR/.venv/bin/python" ]; then
+  exec "$DIR/.venv/bin/python" "$DIR/tray.py"
+fi
+exec ./tray.py

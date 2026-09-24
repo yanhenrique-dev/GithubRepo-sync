@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import os
 import shutil
 import tempfile
 import threading
@@ -21,7 +20,6 @@ import core.state as statemod
 import core.updater as upd
 from core.state import load_state, save_state
 from tests.test_github import _install_fake, _resp
-
 
 # ---------- helpers ----------
 
@@ -134,25 +132,19 @@ def test_replace_zip_name_invalido(tmp_path):
 
 # ---------- 3. Token só p/ hosts GitHub ----------
 
-def test_download_zip_token_nao_vaza_no_redirect(tmp_path, monkeypatch):
-    payload = _zip_bytes({"r/f.txt": "data"})
+def test_download_zip_redirect_bloqueia_host_nao_permitido(tmp_path, monkeypatch):
     seen: dict[str, dict] = {}
 
     def fake_stream(method, url, headers=None, timeout=None, follow_redirects=None):
         assert follow_redirects is False
         seen[str(url)] = dict(headers or {})
-        if "evil.example" in str(url):
-            return _CM(_ZipResp(payload))
         return _CM(_RedirectResp("https://evil.example/x.zip"))
 
     monkeypatch.setattr(upd.httpx, "stream", fake_stream)
-    out = upd.download_zip("https://codeload.github.com/o/r/zip/refs/heads/main", token="SECRET")
-    try:
-        assert zipfile.is_zipfile(out)
-        assert seen["https://codeload.github.com/o/r/zip/refs/heads/main"].get("Authorization") == "Bearer SECRET"
-        assert "Authorization" not in seen["https://evil.example/x.zip"]
-    finally:
-        shutil.rmtree(out.parent, ignore_errors=True)
+    with pytest.raises(ValueError, match="host não permitido"):
+        upd.download_zip("https://codeload.github.com/o/r/zip/refs/heads/main", token="SECRET")
+    assert seen["https://codeload.github.com/o/r/zip/refs/heads/main"].get("Authorization") == "Bearer SECRET"
+    assert "https://evil.example/x.zip" not in seen
 
 
 def test_download_zip_sem_token_sem_header(tmp_path, monkeypatch):
@@ -166,7 +158,7 @@ def test_download_zip_sem_token_sem_header(tmp_path, monkeypatch):
     monkeypatch.setattr(upd.httpx, "stream", fake_stream)
     out = upd.download_zip("https://codeload.github.com/o/r/zip/refs/heads/main")
     try:
-        assert "Authorization" not in seen[str("https://codeload.github.com/o/r/zip/refs/heads/main")]
+        assert "Authorization" not in seen["https://codeload.github.com/o/r/zip/refs/heads/main"]
     finally:
         shutil.rmtree(out.parent, ignore_errors=True)
 
@@ -225,7 +217,7 @@ def test_fetch_remote_branch_com_barra_faz_quote(monkeypatch):
     out = asyncio.run(gh.fetch_remote("o", "r", "feature/x"))
     assert any("feature%2Fx" in u for u in urls), urls
     assert not any("/commits/feature/x" in u for u in urls), urls
-    assert out["zipball_url"].endswith("/zip/refs/heads/feature%2Fx")
+    assert out["zipball_url"].endswith("/zip/abc")
 
 
 # ---------- 6. /api/map reusa parse_github_url ----------

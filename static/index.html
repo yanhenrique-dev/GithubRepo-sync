@@ -3,123 +3,147 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#000000">
-<meta name="description" content="RepoRefresh — atualiza repos GitHub baixados em zip.">
+<meta name="theme-color" content="#0b0c0f">
+<meta name="description" content="RepoRefresh — atualiza repositórios GitHub baixados em zip.">
 <title>RepoRefresh</title>
 <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32">
-<link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/static/icon-16.png">
+<link rel="icon" type="image/png" href="/static/icon-32.png" sizes="32x32">
+<link rel="icon" type="image/png" href="/static/icon-16.png" sizes="16x16">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
-<link rel="stylesheet" href="/static/style.css?v=19">
+<link rel="stylesheet" href="/static/style.css?v=31">
 </head>
 <body>
-<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+<svg class="icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-mark" viewBox="0 0 24 24"><path d="M12 3.5 20 7.8v8.4L12 20.5 4 16.2V7.8L12 3.5Z"/><path d="m7.5 12 3 3 6-6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.2"/><rect x="14" y="4" width="6" height="6" rx="1.2"/><rect x="4" y="14" width="6" height="6" rx="1.2"/><rect x="14" y="14" width="6" height="6" rx="1.2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4.3 4.3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-3.9L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.7 3.9L20 15"/><path d="M20 20v-5h-5"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="3.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5h9a4 4 0 0 0 .7-7.9A5.5 5.5 0 0 0 6.6 9.2a4.7 4.7 0 0 0 .9 9.3Z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 5 4 10l5 5"/><path d="M4 10h9a7 7 0 0 1 7 7v2"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M4.8 4.8l1.4 1.4M17.8 17.8l1.4 1.4M2.5 12h2M19.5 12h2M4.8 19.2l1.4-1.4M17.8 6.2l1.4-1.4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M4 17V7M9 20V4M14 16V8M19 19V5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v17H7.5A2.5 2.5 0 0 0 5 21.5v-17Z"/><path d="M5 19.5A2.5 2.5 0 0 1 7.5 17H20"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-9a2 2 0 0 1 0-2Z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 9 17H3L12 3Z"/><path d="M12 9v5M12 17h.01"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.6 6.4L20 11l-6.4 1.6L12 19l-1.6-6.4L4 11l6.4-1.6L12 3Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+</svg>
 
-<header class="topnav">
-  <div class="topnav-inner">
-    <a class="brand" href="#panel-ctrl">RepoRefresh</a>
-    <div class="side-token" id="token-badge" aria-live="polite">
-      <span class="tok-dot" aria-hidden="true"></span><span id="token-tx">API: …</span>
+<a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-lockup">
+      <div class="brand-mark"><svg class="icon icon-lg"><use href="#i-mark"></use></svg></div>
+      <div><strong>RepoRefresh</strong><span>biblioteca local</span></div>
     </div>
-    <nav class="topnav-links" aria-label="Seções">
-      <a href="#panel-ctrl">Controle</a>
-      <a href="#panel-repos">Repos</a>
-      <a href="#panel-log">Log</a>
+    <div class="sidebar-label">Workspace</div>
+    <nav class="primary-nav" aria-label="Navegação principal">
+      <button class="nav-item is-active" type="button" data-view="library"><svg class="icon"><use href="#i-grid"></use></svg><span>Biblioteca</span><b id="nav-count">0</b></button>
+      <button class="nav-item" type="button" data-action="focus-scan"><svg class="icon"><use href="#i-scan"></use></svg><span>Adicionar pasta</span></button>
+      <button class="nav-item" type="button" data-view="activity"><svg class="icon"><use href="#i-activity"></use></svg><span>Atividade</span></button>
     </nav>
-    <label class="search" for="in-search">Buscar
-      <input id="in-search" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="nome…">
-    </label>
+    <div class="sidebar-spacer"></div>
+    <button class="connection-card" type="button" data-action="refresh-token" aria-live="polite">
+      <span class="connection-dot" id="token-dot"></span>
+      <span><strong id="token-title">Conexão local</strong><small id="token-detail">verificando API…</small></span>
+      <svg class="icon icon-sm"><use href="#i-chevron"></use></svg>
+    </button>
+    <nav class="secondary-nav" aria-label="Navegação secundária">
+      <button class="nav-item" type="button" data-view="settings"><svg class="icon"><use href="#i-sliders"></use></svg><span>Preferências</span></button>
+      <button class="nav-item" type="button" data-action="toggle-theme"><svg class="icon"><use href="#i-sun"></use></svg><span>Aparência</span><em id="theme-label">Escuro</em></button>
+    </nav>
+  </aside>
+  <div class="mobile-scrim" data-action="close-sidebar"></div>
+
+  <div class="main-column">
+    <header class="topbar">
+      <button class="icon-button mobile-menu" type="button" data-action="toggle-sidebar" aria-label="Abrir menu" aria-expanded="false"><svg class="icon"><use href="#i-grid"></use></svg></button>
+      <div class="breadcrumbs"><span>Workspace</span><svg class="icon icon-xs"><use href="#i-chevron"></use></svg><strong id="view-title">Biblioteca</strong></div>
+      <div class="topbar-actions">
+        <span class="sync-state" id="sync-state"><span class="sync-dot"></span><span>pronto</span></span>
+        <button class="icon-button" type="button" data-action="refresh" aria-label="Atualizar biblioteca" title="Atualizar biblioteca"><svg class="icon"><use href="#i-refresh"></use></svg></button>
+        <button class="topbar-avatar" type="button" data-view="settings" aria-label="Abrir preferências">RR</button>
+      </div>
+    </header>
+
+    <main class="content" id="conteudo">
+      <section class="page-intro" data-page="library" id="library-view">
+        <div class="intro-copy">
+          <p class="eyebrow">workspace local</p>
+          <h1>Biblioteca</h1>
+          <p>Escaneie a pasta, compare o SHA e mantenha cada ZIP ou repositório no commit esperado.</p>
+        </div>
+        <dl class="intro-grid" aria-label="Fluxo de atualização">
+          <div><dt>Scan</dt><dd>Pastas e ZIPs locais</dd></div>
+          <div><dt>SHA</dt><dd>Comparação local</dd></div>
+          <div><dt>Backup</dt><dd>Reversão segura</dd></div>
+        </dl>
+      </section>
+
+      <section class="path-panel panel" aria-labelledby="path-title">
+        <div class="path-heading"><div class="section-icon"><svg class="icon"><use href="#i-folder"></use></svg></div><div><h2 id="path-title">Pasta ativa</h2><p id="path-caption">Nenhuma pasta selecionada</p></div></div>
+        <form id="form-path" class="path-form" action="#">
+          <label class="sr-only" for="in-path">Caminho da pasta de repositórios</label>
+          <div class="path-input-wrap"><svg class="icon input-icon"><use href="#i-folder"></use></svg><input id="in-path" name="repo-path" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="/home/voce/repos"></div>
+          <button class="button button-primary" type="submit" id="btn-scan"><svg class="icon"><use href="#i-scan"></use></svg><span>Escanear</span></button>
+        </form>
+        <div class="path-actions">
+          <button class="button button-quiet" type="button" id="btn-check"><svg class="icon"><use href="#i-check"></use></svg><span>Checar agora</span></button>
+          <button class="button button-quiet" type="button" id="btn-all"><svg class="icon"><use href="#i-cloud"></use></svg><span>Atualizar lista</span></button>
+        </div>
+      </section>
+
+      <div class="status-line" id="status" role="status" aria-live="polite"><span class="status-indicator"></span><span>Cole uma pasta para começar.</span></div>
+
+      <section class="summary-grid" aria-label="Resumo da biblioteca">
+        <div class="summary-card"><span class="summary-label">Total</span><strong id="sum-total">0</strong><small>itens detectados</small></div>
+        <div class="summary-card summary-ready"><span class="summary-label">Em dia</span><strong id="sum-ready">0</strong><small>prontos para uso</small></div>
+        <div class="summary-card summary-update"><span class="summary-label">Atualizar</span><strong id="sum-behind">0</strong><small>commits disponíveis</small></div>
+        <div class="summary-card summary-attention"><span class="summary-label">Atenção</span><strong id="sum-attention">0</strong><small>sem dono ou erro</small></div>
+      </section>
+
+      <section class="library-panel panel" aria-labelledby="library-title">
+        <div class="library-head">
+          <div><p class="eyebrow">coleção local</p><h2 id="library-title">Todos os repositórios</h2></div>
+          <span class="result-count" id="count">0 itens</span>
+        </div>
+        <div class="library-toolbar">
+          <label class="search-field" for="in-search"><svg class="icon"><use href="#i-search"></use></svg><span class="sr-only">Buscar repositórios</span><input id="in-search" type="search" autocomplete="off" spellcheck="false" placeholder="Buscar por nome ou repositório"></label>
+          <div class="filter-group" id="filters" role="group" aria-label="Filtrar repositórios">
+            <button class="filter-chip is-active" type="button" data-filter="all">Todos <b id="c-all">0</b></button>
+            <button class="filter-chip" type="button" data-filter="behind">Atualizar <b id="c-behind">0</b></button>
+            <button class="filter-chip" type="button" data-filter="ready">Em dia <b id="c-ok">0</b></button>
+            <button class="filter-chip" type="button" data-filter="unmapped">Sem dono <b id="c-unmapped">0</b></button>
+            <button class="filter-chip" type="button" data-filter="error">Erros <b id="c-error">0</b></button>
+          </div>
+        </div>
+        <div class="repo-list" id="repo-list"></div>
+      </section>
+
+      <section class="activity-panel panel" data-page="activity" id="activity-view" hidden>
+        <div class="library-head"><div><p class="eyebrow">histórico local</p><h1>Atividade</h1></div><button class="icon-button" type="button" data-action="refresh-log" aria-label="Atualizar atividade"><svg class="icon"><use href="#i-refresh"></use></svg></button></div>
+        <div class="activity-summary"><span class="activity-pulse"></span><span>Eventos aparecem aqui conforme você executa ações.</span></div>
+        <pre class="activity-log" id="log" tabindex="0">REPOREFRESH PRONTO.</pre>
+      </section>
+
+      <section class="settings-panel panel" data-page="settings" id="settings-view" hidden>
+        <div class="library-head"><div><p class="eyebrow">comportamento</p><h1>Preferências</h1></div></div>
+        <div class="settings-list">
+          <div class="setting-row"><div class="setting-copy"><strong>Detecção automática</strong><span>Escanear e checar quando um caminho válido for colado.</span></div><button class="toggle" type="button" id="btn-auto" aria-pressed="true"><span></span><b>Ativa</b></button></div>
+          <div class="setting-row"><div class="setting-copy"><strong>Modo de atualização</strong><span>Atualizar pasta extraída ou somente arquivo ZIP.</span></div><button class="toggle" type="button" id="btn-mode" aria-pressed="false"><span></span><b>Pastas</b></button></div>
+          <div class="setting-row"><div class="setting-copy"><strong>Backup antes de trocar</strong><span>Guardar uma cópia .bak para reversão.</span></div><button class="toggle" type="button" id="btn-backup" aria-pressed="true"><span></span><b>Ativo</b></button></div>
+        </div>
+        <div class="settings-note"><svg class="icon"><use href="#i-book"></use></svg><p>Branch sem valor explícito usa branch padrão do GitHub. Commit baixado fica fixado pelo SHA, evitando conteúdo diferente do status.</p></div>
+      </section>
+    </main>
   </div>
-</header>
-
-<div class="page">
-  <div id="loadbar" class="loadbar" role="progressbar" aria-label="Carregando" hidden><div id="loadfill" class="loadfill"></div></div>
-
-  <main id="conteudo">
-    <section aria-labelledby="t-controle" class="card panel" id="panel-ctrl">
-      <div class="card-head">
-        <div>
-                    <h2 id="t-controle">Pasta dos repos</h2>
-        </div>
-      </div>
-      <form id="form-path" class="row" action="#">
-        <label for="in-path" class="lbl">Caminho da pasta</label>
-        <input id="in-path" name="repo-path" type="text" inputmode="text"
-               autocomplete="off" spellcheck="false"
-               placeholder="ex: /home/voce/repos…" class="in">
-        <span class="btns">
-          <button type="button" id="btn-scan" class="btn btn-primary" title="Atalho: E">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0m-5.6 9c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6m18 0c0 2.24 0 3.36-.436 4.216a4 4 0 0 1-1.748 1.748C17.96 21 16.84 21 14.6 21m0-18c2.24 0 3.36 0 4.216.436a4 4 0 0 1 1.748 1.748C21 6.04 21 7.16 21 9.4M9.4 3c-2.24 0-3.36 0-4.216.436a4 4 0 0 0-1.748 1.748C3 6.04 3 7.16 3 9.4"/></svg>Escanear</button>
-          <button type="button" id="btn-check" class="btn btn-quiet" title="Atalho: C">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"/><path d="m8.667 12.633 1.505 1.721a1 1 0 0 0 1.564-.073L15.333 9.3"/></svg>Checar</button>
-          <button type="button" id="btn-all" class="btn btn-quiet">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11.966 11.136-.004 8M19.825 17c4.495-3.16.475-7.73-3.706-7.73C13.296-1.732-3.265 7.368 4.074 15.662m11.07 1.156L11.962 20 8.78 16.818"/></svg>Atualizar tudo</button>
-          <span class="seg-group" role="group" aria-label="Opções">
-            <button type="button" id="btn-auto" class="btn btn-seg btn-inv" aria-pressed="true">Auto: on</button>
-            <button type="button" id="btn-mode" class="btn btn-seg" aria-pressed="false" title="PASTAS = atualiza a pasta extraída. SÓ-ZIP = troca só o .zip.">Modo: pastas</button>
-            <button type="button" id="btn-backup" class="btn btn-seg btn-inv" aria-pressed="true" title="BACKUP ON = guarda .bak antes de trocar. OFF = troca direto, sem backup.">Backup: on</button>
-          </span>
-        </span>
-      </form>
-      <details class="hintbox">
-        <summary>Limites da API do GitHub</summary>
-        <p class="hint">Sem token o GitHub só deixa ~60 checks/hora. Gere um em github.com/settings/tokens (só leitura) e ponha como GITHUB_TOKEN no .env — com token são 5000/hora.</p>
-      </details>
-      <p id="status" class="status" aria-live="polite">Cole a pasta acima — detecção é automática.</p>
-    </section>
-
-    <section aria-labelledby="t-repos" class="card panel" id="panel-repos">
-      <div class="card-head">
-        <div>
-                    <h2 id="t-repos">Detectados na pasta</h2>
-        </div>
-        <span id="count" class="count" aria-live="polite">0 itens</span>
-      </div>
-      <div class="filters" role="group" aria-label="Filtrar repos por status">
-        <span class="chips" id="chips">
-          <button type="button" class="chip" data-chip="all" aria-pressed="true">Todos <b id="c-all">0</b></button>
-          <button type="button" class="chip" data-chip="mapped" aria-pressed="false">Mapeados <b id="c-mapped">0</b></button>
-          <button type="button" class="chip" data-chip="unmapped" aria-pressed="false">Sem dono <b id="c-unmapped">0</b></button>
-          <button type="button" class="chip" data-chip="behind" aria-pressed="false">Desatualizados <b id="c-behind">0</b></button>
-          <button type="button" class="chip" data-chip="ok" aria-pressed="false">Atualizados <b id="c-ok">0</b></button>
-          <button type="button" class="chip" data-chip="error" aria-pressed="false">Erros <b id="c-error">0</b></button>
-        </span>
-      </div>
-      <div class="tbl-wrap">
-        <table class="tbl">
-          <caption class="tbl-cap">Repos detectados na pasta. Use os filtros acima para reduzir a lista.</caption>
-          <thead>
-            <tr>
-              <th scope="col">Repo</th>
-              <th scope="col">Local</th>
-              <th scope="col">Remoto</th>
-              <th scope="col">Status</th>
-              <th scope="col">Ação</th>
-            </tr>
-          </thead>
-          <tbody id="tbody">
-            <tr class="empty"><td colspan="5">Nenhum repo escaneado.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section aria-labelledby="t-log" class="card panel" id="panel-log">
-      <div class="card-head">
-        <div>
-                    <h2 id="t-log">Atividade</h2>
-        </div>
-      </div>
-      <details class="logbox" open>
-        <summary>Ver atividade</summary>
-        <pre id="log" class="log" aria-live="polite" tabindex="0">REPOREFRESH PRONTO.
-</pre>
-      </details>
-    </section>
-
-  </main>
 </div>
-
-<script src="/static/app.js?v=20" defer></script>
+<div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+<script src="/static/app.js?v=31" defer></script>
 </body>
 </html>
