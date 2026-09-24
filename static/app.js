@@ -1,586 +1,703 @@
-/* AllDown — vanilla JS, sem build. */
 const $ = (id) => document.getElementById(id);
-const tbody = $("tbody"), logEl = $("log"), statusEl = $("status"), countEl = $("count");
-const loadbar = $("loadbar"), loadfill = $("loadfill");
-const pathInput = $("in-path"), autoBtn = $("btn-auto"), modeBtn = $("btn-mode");
-const btnAll = $("btn-all"), backupBtn = $("btn-backup");
-let BACKUP = true;
-let BASE = "";
-let ROWS = [];
-let ZIP_ONLY = false;
-let scanning = false;
-let debounce = null;
-let autoDetect = true;
-let lastScanFailed = false;
-let FCHIP = "all";
-let FQ = "";
-
-/* PARTE 2/2 — animação 100% CSS/vanilla, sem mudar comportamento/rotas/IDs. */
-const RM = (typeof window !== "undefined" && window.matchMedia)
-  ? window.matchMedia("(prefers-reduced-motion: reduce)")
-  : { matches: false };
-let countPulseT = null;
-
-function withViewTransition(commit) {
-  if (!RM.matches && typeof document !== "undefined" && document.startViewTransition) {
-    try {
-      document.startViewTransition(() => { commit(); });
-      return;
-    } catch { /* fallback silencioso */ }
-  }
-  commit();
-}
-
-function staggerEnter() {
-  if (RM.matches) return;
-  const rows = tbody.querySelectorAll("tr:not(.empty)");
-  const n = Math.min(rows.length, 12);
-  for (let k = 0; k < n; k++) {
-    const tr = rows[k];
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (!tr.isConnected) return;
-        tr.classList.add("enter");
-        const done = () => tr.classList.remove("enter");
-        tr.addEventListener("animationend", done, { once: true });
-        tr.addEventListener("transitionend", done, { once: true });
-        setTimeout(done, 400);
-      }, k * 25);
-    });
-  }
-}
-
-function pulseCount(prev, next) {
-  if (!countEl || RM.matches || prev === next) return;
-  countEl.classList.remove("enter");
-  void countEl.offsetWidth;
-  countEl.classList.add("enter");
-  clearTimeout(countPulseT);
-  countPulseT = setTimeout(() => countEl.classList.remove("enter"), 300);
-}
-
-const CHIPS = {
-  all: () => true,
-  mapped: (r) => !!r.mapped,
-  unmapped: (r) => !r.mapped,
-  behind: (r) => r.behind === true,
-  ok: (r) => r.behind === false,
-  error: (r) => !!r.error,
+const dom = {
+  sidebar: $("sidebar"),
+  scrim: document.querySelector(".mobile-scrim"),
+  repoList: $("repo-list"),
+  pathPanel: document.querySelector(".path-panel"),
+  libraryPanel: document.querySelector(".library-panel"),
+  libraryView: $("library-view"),
+  activityView: $("activity-view"),
+  settingsView: $("settings-view"),
+  pathInput: $("in-path"),
+  pathCaption: $("path-caption"),
+  search: $("in-search"),
+  count: $("count"),
+  status: $("status"),
+  log: $("log"),
+  tokenDot: $("token-dot"),
+  tokenTitle: $("token-title"),
+  tokenDetail: $("token-detail"),
+  syncState: $("sync-state"),
+  viewTitle: $("view-title"),
+  toastRegion: $("toast-region"),
+  btnScan: $("btn-scan"),
+  btnCheck: $("btn-check"),
+  btnAll: $("btn-all"),
+  btnAuto: $("btn-auto"),
+  btnMode: $("btn-mode"),
+  btnBackup: $("btn-backup"),
 };
-const CHIP_LABEL = {
-  all: "TODOS", mapped: "MAPEADOS", unmapped: "SEM DONO",
-  behind: "DESATUALIZADOS", ok: "ATUALIZADOS", error: "ERROS",
+const state = {
+  base: "",
+  rows: [],
+  filter: "all",
+  query: "",
+  view: "library",
+  auto: true,
+  zipOnly: false,
+  backup: true,
+  busy: false,
+  scanning: false,
+  lastScanFailed: false,
+  theme: "dark",
 };
+const FILTER_INFO = {
+  all: { label: "Todos", test: () => true },
+  behind: { label: "Atualizar", test: (row) => row.behind === true },
+  ready: { label: "Em dia", test: (row) => row.behind === false },
+  unmapped: { label: "Sem dono", test: (row) => !row.mapped },
+  error: { label: "Erros", test: (row) => Boolean(row.error) },
+};
+const RM = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
 
-if (!pathInput || !tbody) {
-  const s = $("status");
-  if (s) s.textContent = "FALHA CRÍTICA: HTML DESATUALIZADO — APERTE CTRL+SHIFT+R.";
-  throw new Error("alldown: DOM desatualizado (cache velho?)");
+if (!dom.repoList || !dom.pathInput || !dom.status) {
+  throw new Error("RepoRefresh: interface não carregada");
 }
 
-function storeGet(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
+function storeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
 }
-
-function storeSet(k, v) {
-  try { localStorage.setItem(k, v); } catch { /* ok */ }
+function storeSet(key, value) {
+  try { localStorage.setItem(key, value); } catch { }
 }
-
-function rearm(t, fn, ms) {
-  clearTimeout(t);
-  return setTimeout(fn, ms);
+function icon(name, className = "") {
+  return `<svg class="icon ${className}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
-
-function paintToggle(btn, on, onText, offText) {
-  if (!btn) return;
-  btn.textContent = on ? onText : offText;
-  btn.setAttribute("aria-pressed", on ? "true" : "false");
-  btn.classList.toggle("btn-inv", on);
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
 }
-
-pathInput.value = storeGet("alldown.path") || "";
-autoDetect = storeGet("alldown.autodetect") !== "0";
-{
-  const c = storeGet("alldown.chip");
-  if (c && CHIPS[c]) FCHIP = c;
+function shortSha(value) {
+  return value ? String(value).slice(0, 7) : "—";
 }
-FQ = storeGet("alldown.q") || "";
-
+function formatSize(bytes) {
+  if (bytes == null) return "?";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = Number(bytes);
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1).replace(".", ",")} ${units[index]}`;
+}
+function formatSpeed(bytesPerSecond) {
+  return bytesPerSecond == null ? "?" : `${formatSize(bytesPerSecond)}/s`;
+}
+function formatDate(value) {
+  if (!value) return "sem data";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "data inválida";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+function looksLikePath(value) {
+  return value.length > 1 && (value.startsWith("/") || value.startsWith("~"));
+}
+function statusInfo(row) {
+  if (row.error) return { key: "error", label: "Erro", detail: "Revisar atividade", cls: "is-error" };
+  if (!row.mapped) return { key: "unmapped", label: "Sem dono", detail: "Mapear repositório", cls: "" };
+  if (row.behind === true && !row.local_sha) return { key: "info", label: "Nunca sincronizado", detail: "Atualizar agora", cls: "is-update" };
+  if (row.behind === true) return { key: "update", label: "Atualização disponível", detail: "Commit remoto", cls: "is-update" };
+  if (row.behind === false) return { key: "ready", label: "Em dia", detail: "Commit verificado", cls: "is-ready" };
+  return { key: "neutral", label: "Aguardando check", detail: "Comparar com GitHub", cls: "" };
+}
+function countRows() {
+  const counts = {
+    all: state.rows.length,
+    behind: state.rows.filter((row) => row.behind === true).length,
+    ready: state.rows.filter((row) => row.behind === false).length,
+    unmapped: state.rows.filter((row) => !row.mapped).length,
+    error: state.rows.filter((row) => Boolean(row.error)).length,
+  };
+  $("nav-count").textContent = String(counts.all);
+  $("c-all").textContent = String(counts.all);
+  $("c-behind").textContent = String(counts.behind);
+  $("c-ok").textContent = String(counts.ready);
+  $("c-unmapped").textContent = String(counts.unmapped);
+  $("c-error").textContent = String(counts.error);
+  $("sum-total").textContent = String(counts.all);
+  $("sum-ready").textContent = String(counts.ready);
+  $("sum-behind").textContent = String(counts.behind);
+  $("sum-attention").textContent = String(counts.unmapped + counts.error);
+  return counts;
+}
 function visibleRows() {
-  const q = FQ.trim().toLowerCase();
-  const pred = CHIPS[FCHIP] || CHIPS.all;
-  return ROWS.filter((r) => pred(r) && (!q || r.name.toLowerCase().includes(q)));
-}
-
-function updateCounts() {
-  for (const k of Object.keys(CHIPS)) {
-    const el = $("c-" + k);
-    if (el) el.textContent = String(ROWS.filter(CHIPS[k]).length);
-  }
-}
-
-function paintChips() {
-  const list = document.querySelectorAll("[data-chip]");
-  list.forEach((el) => {
-    el.setAttribute("aria-pressed", el.dataset.chip === FCHIP ? "true" : "false");
+  const query = state.query.trim().toLowerCase();
+  const test = FILTER_INFO[state.filter]?.test ?? FILTER_INFO.all.test;
+  return state.rows.filter((row) => {
+    const haystack = `${row.name || ""} ${row.owner || ""} ${row.repo || ""} ${row.github_url || ""}`.toLowerCase();
+    return test(row) && (!query || haystack.includes(query));
   });
-  const si = $("in-search");
-  if (si && si.value !== FQ) si.value = FQ;
 }
-
-function paintBtnAll() {
-  if (!btnAll) return;
-  const work = ROWS.some((r) => r.mapped && r.behind === true);
-  btnAll.classList.toggle("btn-primary", work);
-  btnAll.classList.toggle("btn-quiet", !work);
+function initials(row) {
+  const source = row.owner && row.repo ? `${row.owner}${row.repo}` : row.name || "R";
+  return source.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "R";
 }
-
-document.addEventListener("keydown", (ev) => {
-  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const tag = (ev.target && ev.target.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  const k = (ev.key || "").toLowerCase();
-  if (k === "e") { ev.preventDefault(); doScan(); }
-  else if (k === "c") { ev.preventDefault(); doCheck(); }
-});
-
-function setFilter(chip, announce) {
-  if (chip && CHIPS[chip]) FCHIP = chip;
-  storeSet("alldown.chip", FCHIP);
-  storeSet("alldown.q", FQ);
+function artifactLabel(row) {
+  const values = [];
+  if (row.local_dir) values.push("pasta");
+  if (row.zip_path) values.push("ZIP");
+  return values.length ? values.join(" + ") : "sem artefato local";
+}
+function renderRepoCard(row, index) {
+  const status = statusInfo(row);
+  const remoteName = row.owner && row.repo ? `${row.owner}/${row.repo}` : row.github_url || "GitHub";
+  const branch = row.branch || "main";
+  const error = row.error ? `<div class="repo-meta"><span>${icon("alert")} ${esc(row.error)}</span></div>` : "";
+  const tried = row.tried && row.tried.length ? `<div class="repo-meta"><span>${icon("search")} ${esc(row.tried.join(" · "))}</span></div>` : "";
+  if (!row.mapped) {
+    const suggestions = row.suggestions && row.suggestions.length
+      ? `<div class="suggestions">${row.suggestions.map((suggestion, suggestionIndex) => `<button class="suggestion" type="button" data-action="pick-suggestion" data-index="${index}" data-suggestion="${suggestionIndex}">${esc(suggestion.full_name || suggestion.url || "GitHub")} <span>★ ${esc(suggestion.stars ?? 0)}</span></button>`).join("")}</div>`
+      : "";
+    return `<article class="repo-card ${status.cls} ${row.busy ? "is-busy" : ""}" data-row-index="${index}">
+      <div class="repo-main"><div class="repo-avatar">${esc(initials(row))}</div><div class="repo-copy"><div class="repo-title-line"><strong>${esc(row.name)}</strong><span class="mini-tag">sem dono</span></div><span class="repo-url">${esc(row.suggested_repo || "repositório ainda não identificado")}</span>${tried}${error}</div></div>
+      <div class="repo-state state-${status.key}"><span class="state-dot"></span><span class="state-copy"><strong>${status.label}</strong><small>${status.detail}</small></span></div>
+      <div class="repo-inline-form"><label class="sr-only" for="url-${index}">URL do GitHub para ${esc(row.name)}</label><input id="url-${index}" data-url-input="${index}" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repo"><button class="button button-primary" type="button" data-action="save-map" data-index="${index}">${icon("check")}Salvar</button><button class="button button-quiet" type="button" data-action="suggest" data-index="${index}">${icon("spark")}Sugerir</button></div>${suggestions}
+    </article>`;
+  }
+  const updateLabel = row.behind === true ? "Atualizar" : "Verificar";
+  const updateClass = row.behind === true ? "button-primary" : "button-quiet";
+  const rollbackDisabled = row.can_rollback === false ? " disabled" : "";
+  return `<article class="repo-card ${status.cls} ${row.busy ? "is-busy" : ""}" data-row-index="${index}">
+    <div class="repo-main"><div class="repo-avatar">${esc(initials(row))}</div><div class="repo-copy"><div class="repo-title-line"><strong>${esc(row.name)}</strong>${row.auto ? '<span class="mini-tag is-auto">auto</span>' : ""}<span class="mini-tag is-branch">${esc(branch)}</span></div><span class="repo-url">${esc(remoteName)}</span><div class="repo-meta"><span>${icon("folder")} ${esc(artifactLabel(row))}</span><span>${icon("check")} local <code>${esc(shortSha(row.local_sha))}</code></span><span>${icon("cloud")} remoto <code>${esc(shortSha(row.remote_sha))}</code></span></div>${error}</div></div>
+    <div class="repo-state state-${status.key}"><span class="state-dot"></span><span class="state-copy"><strong>${status.label}</strong><small>${status.detail}</small></span></div>
+    <div class="repo-actions"><button class="button button-quiet" type="button" data-action="check-row" data-index="${index}">${icon("refresh")}Checar tudo</button><button class="button ${updateClass}" type="button" data-action="update-row" data-index="${index}">${icon("cloud")}${updateLabel}</button><button class="button button-danger" type="button" data-action="rollback-row" data-index="${index}"${rollbackDisabled}>${icon("back")}${row.can_rollback === false ? "Sem backup" : "Reverter"}</button></div>
+  </article>`;
+}
+function renderEmpty() {
+  if (!state.base) {
+    return `<div class="empty-state"><div class="empty-icon">${icon("folder")}</div><strong>Escolha uma pasta para começar</strong><p>RepoRefresh procura pastas e ZIPs, detecta o repositório e mostra tudo aqui.</p></div>`;
+  }
+  if (!state.rows.length) {
+    return `<div class="empty-state"><div class="empty-icon">${icon("scan")}</div><strong>Nenhum repositório encontrado</strong><p>Confira o caminho escolhido. A pasta pode estar vazia ou sem permissão de leitura.</p></div>`;
+  }
+  return `<div class="empty-state"><div class="empty-icon">${icon("search")}</div><strong>Nenhum item neste filtro</strong><p>Ajuste busca ou escolha outro grupo para continuar.</p></div>`;
+}
+function render() {
+  const rows = visibleRows();
+  const counts = countRows();
+  dom.count.textContent = `${rows.length} de ${state.rows.length} ${state.rows.length === 1 ? "item" : "itens"}`;
+  dom.pathCaption.textContent = state.base || "Nenhuma pasta selecionada";
+  dom.search.value = state.query;
+  document.querySelectorAll("[data-filter]").forEach((button) => {
+    const active = button.dataset.filter === state.filter;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  dom.repoList.innerHTML = rows.length ? rows.map((row) => renderRepoCard(row, state.rows.indexOf(row))).join("") : renderEmpty();
+  dom.btnAll.classList.toggle("button-primary", counts.behind > 0);
+  dom.btnAll.classList.toggle("button-quiet", counts.behind === 0);
+  dom.btnAll.disabled = state.busy || counts.behind === 0;
+}
+function paintToggles() {
+  dom.btnAuto.setAttribute("aria-pressed", state.auto ? "true" : "false");
+  dom.btnAuto.querySelector("b").textContent = state.auto ? "Ativa" : "Pausada";
+  dom.btnMode.setAttribute("aria-pressed", state.zipOnly ? "true" : "false");
+  dom.btnMode.querySelector("b").textContent = state.zipOnly ? "Só ZIP" : "Pastas";
+  dom.btnBackup.setAttribute("aria-pressed", state.backup ? "true" : "false");
+  dom.btnBackup.querySelector("b").textContent = state.backup ? "Ativo" : "Desligado";
+}
+function setView(view) {
+  state.view = view;
+  dom.libraryView.hidden = view !== "library";
+  dom.libraryPanel.hidden = view !== "library";
+  dom.activityView.hidden = view !== "activity";
+  dom.settingsView.hidden = view !== "settings";
+  dom.pathPanel.hidden = view !== "library";
+  document.querySelectorAll("[data-view]").forEach((item) => {
+    const active = item.dataset.view === view;
+    item.classList.toggle("is-active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  const titles = { library: "Biblioteca", activity: "Atividade", settings: "Preferências" };
+  dom.viewTitle.textContent = titles[view] || "Biblioteca";
+  closeSidebar();
+  window.scrollTo({ top: 0, behavior: RM.matches ? "auto" : "smooth" });
+}
+function setFilter(filter) {
+  if (FILTER_INFO[filter]) state.filter = filter;
+  storeSet("alldown.filter", state.filter);
   render();
-  if (announce) {
-    const vis = visibleRows().length;
-    const active = FCHIP !== "all" || FQ.trim();
-    say(active
-      ? `FILTRO ${CHIP_LABEL[FCHIP]}${FQ.trim() ? ` + "${FQ.trim()}"` : ""} — ${vis} DE ${ROWS.length}.`
-      : `FILTRO LIMPO — ${ROWS.length} ITENS.`);
+}
+function say(message, tone = "neutral", showToast = false) {
+  dom.status.dataset.tone = tone;
+  dom.status.querySelector("span:last-child").textContent = message;
+  if (showToast) toast(message, tone);
+}
+function toast(message, tone = "neutral") {
+  const item = document.createElement("div");
+  item.className = `toast${tone === "error" ? " is-error" : tone === "warning" ? " is-warning" : ""}`;
+  item.innerHTML = `${icon(tone === "error" ? "alert" : tone === "warning" ? "activity" : "check")}<span>${esc(message)}</span>`;
+  dom.toastRegion.appendChild(item);
+  window.setTimeout(() => item.remove(), 4200);
+}
+function setBusy(value) {
+  state.busy = value;
+  document.body.classList.toggle("is-busy", value);
+  dom.btnScan.disabled = value;
+  dom.btnCheck.disabled = value || !state.base;
+  dom.btnAll.disabled = value || !state.base || state.rows.filter((row) => row.behind === true).length === 0;
+  dom.syncState.classList.toggle("is-warn", value);
+  dom.syncState.querySelector("span:last-child").textContent = value ? "processando" : "pronto";
+}
+function startProgress() {
+  dom.syncState.classList.add("is-warn");
+  dom.syncState.querySelector("span:last-child").textContent = "processando";
+}
+function stopProgress() {
+  if (!state.busy) {
+    dom.syncState.classList.remove("is-warn");
+    dom.syncState.querySelector("span:last-child").textContent = "pronto";
   }
 }
-
-function clearFilter() {
-  FQ = "";
-  setFilter("all", true);
-}
-
-function paintAutoBtn() {
-  paintToggle(autoBtn, autoDetect, "AUTO: ON", "AUTO: OFF");
-}
-
-function toggleAuto() {
-  autoDetect = !autoDetect;
-  storeSet("alldown.autodetect", autoDetect ? "1" : "0");
-  paintAutoBtn();
-  say(autoDetect ? "AUTO LIGADO — DETECTO E CHECO SOZINHO." : "AUTO DESLIGADO — TUDO MANUAL.");
-  if (autoDetect && looksLikePath(pathInput.value.trim()) && pathInput.value.trim() !== BASE) doScan();
-}
-
-function paintMode() {
-  paintToggle(modeBtn, ZIP_ONLY, "MODO: SÓ-ZIP", "MODO: PASTAS");
-}
-
-function paintBackup() {
-  paintToggle(backupBtn, BACKUP, "BACKUP: ON", "BACKUP: OFF");
-}
-
-async function postFlag(endpoint, payload, apply, msgs) {
-  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
-  if (msgs.say_first) say(msgs.say_first);
+async function api(path, options = {}, timeoutMs = 90000) {
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  const timer = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const j = await api(endpoint, {
+    const request = { ...options };
+    if (!request.signal && controller) request.signal = controller.signal;
+    const response = await fetch(path, request);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = payload && payload.detail;
+      throw new Error(typeof detail === "string" ? detail : `HTTP ${response.status}`);
+    }
+    return payload;
+  } catch (error) {
+    if (error && error.name === "AbortError") throw new Error("Tempo esgotado");
+    throw error;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+async function postFlag(endpoint, payload, apply) {
+  if (state.busy) return;
+  if (!state.base) {
+    say("Selecione uma pasta primeiro.", "warning", true);
+    return;
+  }
+  setBusy(true);
+  try {
+    const result = await api(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, ...payload }),
-    });
-    apply(j);
-    say(msgs.ok());
-  } catch (e) { say(`${msgs.fail}: ${e.message}`); }
-  refreshLog();
+      body: JSON.stringify({ path: state.base, ...payload }),
+    }, 90000);
+    apply(result);
+    paintToggles();
+    render();
+    await doScan({ allowBusy: true, path: state.base });
+  } catch (error) {
+    say(`Não foi possível alterar a preferência: ${error.message}`, "error", true);
+  } finally {
+    setBusy(false);
+    refreshLog();
+  }
 }
-
-async function toggleBackup() {
-  const next = !BACKUP;
-  await postFlag("/api/backup", { backup: next },
-    (j) => { BACKUP = !!j.backup; paintBackup(); },
-    {
-      ok: () => BACKUP ? "BACKUP LIGADO — UPDATE GUARDA .BAK." : "BACKUP DESLIGADO — UPDATE TROCA DIRETO, SEM VOLTA.",
-      fail: "FALHA AO TROCAR BACKUP",
-    });
+async function refreshToken() {
+  try {
+    const result = await api("/api/token");
+    if (result.rate_limited) {
+      dom.tokenDot.className = "connection-dot is-warn";
+      dom.tokenTitle.textContent = "Limite da API";
+      dom.tokenDetail.textContent = "Aguardando reset";
+    } else if (result.valid === false) {
+      dom.tokenDot.className = "connection-dot is-error";
+      dom.tokenTitle.textContent = "Token inválido";
+      dom.tokenDetail.textContent = "Verificar GITHUB_TOKEN";
+    } else if (result.configured && result.valid) {
+      dom.tokenDot.className = "connection-dot is-ok";
+      dom.tokenTitle.textContent = "GitHub conectado";
+      dom.tokenDetail.textContent = `${result.remaining ?? "?"}/${result.limit ?? "?"} requests`;
+    } else if (result.configured && result.valid === null) {
+      dom.tokenDot.className = "connection-dot is-warn";
+      dom.tokenTitle.textContent = "Status desconhecido";
+      dom.tokenDetail.textContent = "Aguardando resposta do GitHub";
+    } else {
+      dom.tokenDot.className = "connection-dot is-warn";
+      dom.tokenTitle.textContent = "Modo sem token";
+      dom.tokenDetail.textContent = result.limit ? `${result.remaining}/${result.limit} requests` : "60 requests/hora";
+    }
+  } catch {
+    dom.tokenDot.className = "connection-dot is-error";
+    dom.tokenTitle.textContent = "API offline";
+    dom.tokenDetail.textContent = "Servidor local indisponível";
+  }
 }
-
-async function toggleMode() {
-  const next = !ZIP_ONLY;
-  await postFlag("/api/mode", { zip_only: next },
-    (j) => { ZIP_ONLY = !!j.zip_only; paintMode(); },
-    {
-      say_first: next ? "TROCANDO P/ SÓ-ZIP…" : "TROCANDO P/ PASTAS…",
-      ok: () => ZIP_ONLY
-        ? "MODO SÓ-ZIP — UPDATE TROCA SÓ O .ZIP, PASTA INTACTA."
-        : "MODO PASTAS — UPDATE REFRESCA A PASTA EXTRAÍDA.",
-      fail: "FALHA AO TROCAR MODO",
-    });
-}
-
-function barStart() {
-  if (!loadbar) return;
-  loadbar.hidden = false;
-  loadbar.classList.add("run");
-  loadbar.classList.remove("done");
-  if (loadfill) loadfill.style.width = "";
-}
-
-function barSet(done, total) {
-  if (!loadbar || !loadfill) return;
-  loadbar.hidden = false;
-  loadbar.classList.remove("run");
-  loadbar.classList.add("done");
-  loadfill.style.width = total > 0 ? Math.round((done / total) * 100) + "%" : "0%";
-}
-
-function barStop() {
-  if (!loadbar) return;
-  loadbar.classList.remove("run", "done");
-  loadbar.hidden = true;
-}
-
-function looksLikePath(v) {
-  return v.length > 1 && (v.startsWith("/") || v.startsWith("~"));
-}
-
-function say(msg) {
-  statusEl.textContent = msg;
-}
-
 async function refreshLog() {
   try {
-    const r = await fetch("/api/log");
-    const j = await r.json();
-    logEl.textContent = (j.lines || []).join("\n") + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-  } catch { /* log é acessório, não derruba a UI */ }
+    const result = await api("/api/log", {}, 10000);
+    dom.log.textContent = `${(result.lines || []).join("\n")}\n`;
+    dom.log.scrollTop = dom.log.scrollHeight;
+  } catch { }
 }
-
-function short(sha) {
-  return sha ? String(sha).slice(0, 7) : "—";
-}
-
-/* Nomes de pasta, URLs e erros vêm do disco/rede — nunca entram crus no HTML. */
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
-/* Ícones MynaUI (MIT) inline — stroke herda currentColor. */
-const IC = {
-  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 13.626 1.606 1.722c.886.95 1.329 1.424 1.825 1.574.436.131.9.096 1.315-.1.473-.224.852-.761 1.612-1.836L18 7"/></svg>',
-  cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11.966 11.136-.004 8M19.825 17c4.495-3.16.475-7.73-3.706-7.73C13.296-1.732-3.265 7.368 4.074 15.662m11.07 1.156L11.962 20 8.78 16.818"/></svg>',
-  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12h-15m5.625 6L4.5 12l5.625-6"/></svg>',
-  bolt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.564 13.708a.504.504 0 0 0-.496-.565H7a.506.506 0 0 1-.461-.702l3.907-9.128a.5.5 0 0 1 .46-.313h4.518c.353 0 .594.36.465.694l-2.225 5.712a.506.506 0 0 0 .464.694H17c.412 0 .647.479.398.813l-7.47 10.046c-.062.083-.191.03-.18-.072z"/></svg>',
-};
-
-function statusTag(r) {
-  if (r.error) return '<span class="tag tag-err">ERRO</span>';
-  if (!r.mapped) return '<span class="tag tag-g">SEM MAPA</span>';
-  if (r.behind === true && (r.local_sha === null || r.local_sha === undefined))
-    return '<span class="tag tag-info">NUNCA SINCRONIZADO</span>';
-  if (r.behind === true) return '<span class="tag tag-warn">DESATUALIZADO</span>';
-  if (r.behind === false) return '<span class="tag tag-ok">ATUALIZADO</span>';
-  return '<span class="tag tag-g">LISTADO</span>';
-}
-
-function render() {
-  updateCounts();
-  paintChips();
-  paintBtnAll();
-  const vis = visibleRows();
-  const prevCount = countEl.textContent;
-  const nextCount = `${vis.length} DE ${ROWS.length}`;
-  countEl.textContent = nextCount;
-  pulseCount(prevCount, nextCount);
-  if (!ROWS.length) {
-    withViewTransition(() => {
-      tbody.innerHTML = '<tr class="empty"><td colspan="5">NENHUM REPO ESCANEADO.</td></tr>';
-    });
+async function doScan(options = {}) {
+  const path = options.path || dom.pathInput.value.trim();
+  if (!path) {
+    say("Cole uma pasta para começar.", "warning", true);
+    dom.pathInput.focus();
     return;
   }
-  if (!vis.length) {
-    withViewTransition(() => {
-      tbody.innerHTML = '<tr class="empty"><td colspan="5">NADA BATE COM O FILTRO.<br><button class="btn btn-quiet" data-clear type="button">LIMPAR FILTRO</button></td></tr>';
-    });
-    return;
-  }
-  const html = vis.map((r) => {
-    const i = ROWS.indexOf(r);
-    const autoChip = r.auto ? ' <span class="tag tag-info">AUTO</span>' : "";
-    const tried = (r.tried && r.tried.length)
-      ? `<div class="mono dim">VASCULHEI E NÃO ACHEI DONO: ${esc(r.tried.join(" • ").toUpperCase())}</div>`
-      : "";
-    const hint = (!r.mapped && r.suggested_repo)
-      ? `<div class="mono">PARECE SER O REPO “${esc(r.suggested_repo)}” — FALTA O DONO (OWNER).</div>`
-      : "";
-    const suggBtn = !r.mapped
-      ? `<div class="mini" style="margin-top:6px"><button class="btn btn-quiet" data-suggest="${i}" type="button">${IC.bolt}SUGERIR DONOS</button></div>`
-      : "";
-    const suggList = (!r.mapped && r.suggestions && r.suggestions.length)
-      ? `<div class="sugg">${r.suggestions.map((s, j) => `<button class="sugg-btn" data-pick="${i}:${j}" type="button" title="${esc(s.description || s.full_name)}"><b>${esc(s.full_name)}</b><span>★ ${s.stars}</span></button>`).join("")}</div>`
-      : "";
-    const err = r.error ? `<div class="mono">ERRO: ${esc(r.error)}</div>` : "";
-    const repoCell = r.mapped
-      ? `<div><strong>${esc(r.name)}</strong></div><div class="mono">${r.auto ? "AUTO: " : ""}${esc(r.github_url || "")}${autoChip}</div>${err}`
-      : `<div><strong>${esc(r.name)}</strong></div>${hint}${tried}`;
-    const actionCell = r.mapped
-      ? `<div class="mini">
-           <button class="btn btn-quiet" data-check1="${i}" type="button">${IC.check}CHECAR</button>
-           <button class="btn btn-primary" data-upd="${i}" type="button">${IC.cloud}ATUALIZAR</button>
-           <button class="btn btn-quiet btn-danger" data-rb="${i}" type="button">${IC.back}REVERTER</button>
-         </div>`
-      : `<div class="urlrow">
-           <label class="mono" for="url-${i}" style="align-self:center">URL</label>
-           <input class="in" id="url-${i}" data-url="${i}" type="text" inputmode="url"
-             autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repo…">
-           <button class="btn btn-quiet" data-save="${i}" type="button">${IC.check}SALVAR</button>
-         </div>${suggBtn}${suggList}`;
-    return `<tr class="${r.mapped ? "" : "unmapped"}">
-      <td>${repoCell}</td>
-      <td class="mono">${short(r.local_sha)}</td>
-      <td class="mono">${short(r.remote_sha)}</td>
-      <td>${statusTag(r)}</td>
-      <td>${actionCell}</td>
-    </tr>`;
-  }).join("");
-  withViewTransition(() => {
-    tbody.innerHTML = html;
-    staggerEnter();
-  });
-}
-
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
-  return j;
-}
-
-async function doScan() {
-  const typed = pathInput.value.trim();
-  if (!typed) { say("COLE A PASTA ACIMA — DETECÇÃO É AUTOMÁTICA."); return; }
-  if (scanning) return;
-  scanning = true;
+  if (state.busy && options.allowBusy !== true) return;
+  state.scanning = true;
+  storeSet("alldown.path", path);
   setBusy(true);
-  barStart();
-  BASE = typed;
-  storeSet("alldown.path", BASE);
-  say("ESCANEANDO…");
+  startProgress();
+  say("Escaneando pasta…", "info");
   try {
-    const j = await api(`/api/scan?path=${encodeURIComponent(BASE)}`);
-    ROWS = j.items || [];
-    ZIP_ONLY = !!j.zip_only;
-    paintMode();
-    BACKUP = j.backup !== false;
-    paintBackup();
-    lastScanFailed = false;
+    const result = await api(`/api/scan?path=${encodeURIComponent(path)}`, {}, 900000);
+    state.base = result.path || path;
+    state.rows = result.items || [];
+    state.zipOnly = Boolean(result.zip_only);
+    state.backup = result.backup !== false;
+    state.lastScanFailed = false;
+    paintToggles();
     render();
-    const mapped = ROWS.filter((r) => r.mapped).length;
-    if (!ROWS.length) say(`PASTA VAZIA — NADA EM ${j.path}.`);
-    else if (!mapped) say(`SCAN OK — ${ROWS.length} ITENS, MAS NENHUM LIGADO AO GITHUB. COLE A URL NA LINHA OU CRIE repos.json.`);
-    else say(`SCAN OK — ${mapped}/${ROWS.length} LIGADOS AO GITHUB EM ${j.path}.`);
-    if (autoDetect && mapped) await doCheck();
-  } catch (e) { lastScanFailed = true; say(`FALHA NO SCAN: ${e.message}`); }
-  refreshLog();
-  scanning = false;
-  barStop();
-  setBusy(false);
-}
-
-function setBusy(b) {
-  for (const id of ["btn-scan", "btn-check", "btn-all"]) {
-    const el = $(id);
-    if (el) el.disabled = b;
+    const mapped = state.rows.filter((row) => row.mapped).length;
+    if (!state.rows.length) say("Pasta vazia: nenhum repositório encontrado.", "warning");
+    else if (!mapped) say(`${state.rows.length} itens detectados; nenhum vínculo GitHub ainda.`, "warning");
+    else say(`${mapped} de ${state.rows.length} repositórios prontos para checagem.`, "success", true);
+    if (state.auto && mapped) await doCheck(true);
+  } catch (error) {
+    state.lastScanFailed = true;
+    dom.pathInput.value = state.base || "";
+    storeSet("alldown.path", state.base || "");
+    say(`Falha no scan: ${error.message}`, "error", true);
+  } finally {
+    state.scanning = false;
+    setBusy(false);
+    stopProgress();
+    refreshLog();
   }
 }
-
-async function doCheck() {
-  if (!BASE) { say("ESCANEIE UMA PASTA PRIMEIRO."); return; }
-  say("CONSULTANDO GITHUB…");
-  barStart();
+async function doCheck(fromScan = false) {
+  if (!state.base) {
+    say("Selecione uma pasta primeiro.", "warning", true);
+    return;
+  }
+  if (state.busy && !fromScan) return;
+  if (!fromScan) setBusy(true);
+  startProgress();
+  say("Consultando commits no GitHub…", "info");
   try {
-    const j = await api(`/api/check?path=${encodeURIComponent(BASE)}`);
-    const byName = Object.fromEntries((j.items || []).map((x) => [x.name, x]));
-    ROWS = ROWS.map((r) => ({ ...r, ...(byName[r.name] || {}) }));
-    // inclui novos mapeados que surgiram
-    for (const x of (j.items || [])) {
-      if (!ROWS.some((r) => r.name === x.name)) ROWS.push(x);
-    }
+    const result = await api(`/api/check?path=${encodeURIComponent(state.base)}`, {}, 900000);
+    const checkedItems = result.items || [];
+    const previousByName = Object.fromEntries(state.rows.map((row) => [row.name, row]));
+    const unmappedRows = state.rows.filter((row) => !row.mapped);
+    state.rows = [
+      ...unmappedRows,
+      ...checkedItems.map((item) => {
+        const merged = { ...(previousByName[item.name] || {}), ...item };
+        merged.error = item.error || null;
+        if (item.error) merged.behind = null;
+        return merged;
+      }),
+    ];
     render();
-    say(`CHECK OK — ${j.items.length} REPOS CONSULTADOS.`);
-  } catch (e) { say(`FALHA NO CHECK: ${e.message}`); }
-  barStop();
-  refreshLog();
+    const errors = checkedItems.filter((item) => item.error).length;
+    const updates = checkedItems.filter((item) => item.behind === true).length;
+    const message = errors
+      ? `Check concluído com ${errors} ${errors === 1 ? "erro" : "erros"}.`
+      : updates
+        ? `Check concluído: ${updates} ${updates === 1 ? "atualização disponível" : "atualizações disponíveis"}.`
+        : "Check concluído: nada pendente.";
+    say(message, errors || updates ? "warning" : "success", true);
+  } catch (error) {
+    say(`Falha no check: ${error.message}`, "error", true);
+  } finally {
+    if (!fromScan) setBusy(false);
+    stopProgress();
+    refreshLog();
+  }
 }
-
-function fmtSize(bytes) {
-  if (bytes == null) return "?";
-  const u = ["B", "KB", "MB", "GB"];
-  let v = bytes, i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(".", ",")} ${u[i]}`;
-}
-
-function fmtSpeed(bps) {
-  return bps == null ? "?" : `${fmtSize(bps)}/s`;
-}
-
-async function doUpdate(name, quiet) {
-  say(`ATUALIZANDO ${name}…`);
-  if (!quiet) barStart();
+async function doUpdate(name, quiet = false) {
+  if (state.busy && !quiet) return false;
+  const row = state.rows.find((item) => item.name === name);
+  if (!row || !row.mapped || (!quiet && row.behind !== true)) return false;
+  if (!quiet) setBusy(true);
+  row.busy = true;
+  render();
+  startProgress();
+  say(`Atualizando ${name}…`, "info");
   try {
-    const j = await api("/api/update", {
+    const result = await api("/api/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, name }),
-    });
-    const ix = ROWS.findIndex((r) => r.name === name);
-    if (ix >= 0) ROWS[ix] = { ...ROWS[ix], local_sha: j.remote_sha, behind: false };
+      body: JSON.stringify({ path: state.base, name }),
+    }, 900000);
+    row.local_sha = result.remote_sha;
+    row.behind = false;
+    row.error = null;
+    row.can_rollback = Boolean(result.backup);
+    if (result.zip_only) row.zip_path = result.path;
+    else row.local_dir = result.path;
     render();
-    const dl = `BAIXOU ${fmtSize(j.download_bytes)} A ${fmtSpeed(j.speed_bps)}`;
-    const sz = `PACOTE ${fmtSize(j.old_bytes)} → ${fmtSize(j.new_bytes)}`;
-    say(ZIP_ONLY
-      ? `OK — ${name} ZIP TROCADO. ${dl}. ${sz}. BACKUP: ${j.backup || "SEM BACKUP (ZIP NOVO)"}.`
-      : `OK — ${name} ATUALIZADO. ${dl}. ${sz}. BACKUP: ${j.backup || "SEM BACKUP (PASTA NOVA)"}.`);
-  } catch (e) { say(`FALHA EM ${name}: ${e.message}`); }
-  if (!quiet) barStop();
-  refreshLog();
+    const transfer = `${formatSize(result.download_bytes)} · ${formatSpeed(result.speed_bps)}`;
+    const packageSize = `${formatSize(result.old_bytes)} → ${formatSize(result.new_bytes)}`;
+    say(`${name} atualizado. ${transfer}. ${packageSize}.`, "success", true);
+    return true;
+  } catch (error) {
+    row.error = error.message;
+    say(`Falha em ${name}: ${error.message}`, "error", true);
+    return false;
+  } finally {
+    row.busy = false;
+    render();
+    if (!quiet) setBusy(false);
+    stopProgress();
+    refreshLog();
+  }
 }
-
 async function doRollback(name) {
-  if (!confirm(`Reverter ${name} para o backup .bak?`)) return;
+  if (state.busy) return;
+  const row = state.rows.find((item) => item.name === name);
+  if (!row || !window.confirm(`Reverter ${name} para o backup mais antigo?`)) return;
+  setBusy(true);
+  row.busy = true;
+  render();
+  say(`Revertendo ${name}…`, "info");
   try {
-    await api("/api/rollback", {
+    const result = await api("/api/rollback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, name }),
-    });
-    say(`OK — ${name} REVERTIDO.`);
-  } catch (e) { say(`FALHA AO REVERTER: ${e.message}`); }
-  refreshLog();
+      body: JSON.stringify({ path: state.base, name }),
+    }, 900000);
+    row.local_sha = null;
+    row.behind = null;
+    row.error = null;
+    row.can_rollback = false;
+    render();
+    say(`${name} revertido${result.zip_only ? " no modo ZIP" : ""}.`, "success", true);
+  } catch (error) {
+    say(`Falha ao reverter: ${error.message}`, "error", true);
+  } finally {
+    row.busy = false;
+    render();
+    setBusy(false);
+    refreshLog();
+  }
 }
-
-async function mapRepo(i, url) {
-  url = (url || "").trim();
-  if (!url.includes("github.com")) { say("URL INVÁLIDA — USE https://github.com/owner/repo."); return; }
+async function mapRepo(index, url) {
+  if (state.busy) return;
+  const row = state.rows[index];
+  url = String(url || "").trim();
+  if (!row || !url) {
+    say("Informe uma URL do GitHub.", "warning", true);
+    return;
+  }
+  setBusy(true);
   try {
     await api("/api/map", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: BASE, name: ROWS[i].name, url }),
-    });
-    ROWS[i] = { ...ROWS[i], github_url: url, mapped: true, suggestions: null };
-    render();
-    say(`MAPEADO — ${ROWS[i].name}. CLIQUE EM CHECAR.`);
-  } catch (e) { say(`FALHA AO SALVAR: ${e.message}`); }
-  refreshLog();
-}
-
-async function doSave(i) {
-  const inp = document.querySelector(`[data-url="${i}"]`);
-  mapRepo(i, (inp && inp.value) || "");
-}
-
-async function doSuggest(i) {
-  const q = ROWS[i].suggested_repo || ROWS[i].name;
-  say(`BUSCANDO DONOS P/ “${q}”…`);
-  try {
-    const j = await api(`/api/suggest?q=${encodeURIComponent(q)}`);
-    ROWS[i] = { ...ROWS[i], suggestions: j.items || [] };
-    render();
-    say((j.items || []).length
-      ? `${j.items.length} SUGESTÕES P/ ${ROWS[i].name} — CLIQUE P/ MAPEAR.`
-      : `NENHUMA SUGESTÃO P/ ${ROWS[i].name}. COLE A URL.`);
-  } catch (e) { say(`FALHA AO SUGERIR: ${e.message}`); }
-}
-
-async function refreshToken() {
-  const tx = $("token-tx");
-  const badge = $("token-badge");
-  if (!tx) return;
-  const paint = (cls, msg) => {
-    tx.textContent = msg;
-    if (badge) badge.className = `side-token${cls ? ` ${cls}` : ""}`;
-  };
-  try {
-    const j = await api("/api/token");
-    if (j.rate_limited) paint("tok-warn", "RATE LIMIT ESGOTADO");
-    else if (j.valid === false) paint("tok-err", "TOKEN INVÁLIDO");
-    else if (j.configured && j.valid) paint("tok-ok", `TOKEN OK · ${j.remaining}/${j.limit}`);
-    else if (!j.configured) paint("tok-warn", j.limit ? `SEM TOKEN · ${j.remaining}/${j.limit}` : "SEM TOKEN · 60/H");
-    else paint("", "API: ?");
-  } catch { paint("", "API: OFFLINE"); }
-}
-
-$("btn-scan").addEventListener("click", doScan);
-$("btn-check").addEventListener("click", doCheck);
-if (autoBtn) autoBtn.addEventListener("click", toggleAuto);
-if (modeBtn) modeBtn.addEventListener("click", toggleMode);
-if (backupBtn) backupBtn.addEventListener("click", toggleBackup);
-$("btn-all").addEventListener("click", async () => {
-  const todo = visibleRows().filter((r) => r.mapped && r.behind === true);
-  if (!todo.length) { say("NADA PARA ATUALIZAR NA LISTA VISÍVEL."); return; }
-  setBusy(true);
-  let i = 0;
-  for (const r of todo) {
-    barSet(i, todo.length);
-    await doUpdate(r.name, true);
-    i++;
+      body: JSON.stringify({ path: state.base, name: row.name, url }),
+    }, 90000);
+    row.suggestions = null;
+    row.error = null;
+    say(`${row.name} mapeado. Atualizando biblioteca…`, "success", true);
+    await doScan({ allowBusy: true, path: state.base });
+  } catch (error) {
+    say(`Falha ao mapear: ${error.message}`, "error", true);
+  } finally {
+    setBusy(false);
+    refreshLog();
   }
-  barSet(todo.length, todo.length);
-  say(`LOTE OK — ${todo.length} VISÍVEIS PROCESSADOS. VEJA O LOG.`);
-  setBusy(false);
-  setTimeout(barStop, 1500);
-  refreshLog();
-});
-tbody.addEventListener("click", (ev) => {
-  const src = ev.target;
-  if (!(src instanceof HTMLElement)) return;
-  const t = src.closest("[data-clear],[data-save],[data-suggest],[data-pick],[data-upd],[data-rb],[data-check1]");
-  if (!t || !tbody.contains(t)) return;
-  if (t.dataset.clear !== undefined) { clearFilter(); return; }
-  if (t.dataset.save !== undefined) doSave(Number(t.dataset.save));
-  if (t.dataset.suggest !== undefined) doSuggest(Number(t.dataset.suggest));
-  if (t.dataset.pick !== undefined) {
-    const [pi, pj] = String(t.dataset.pick).split(":").map(Number);
-    const s = ROWS[pi] && ROWS[pi].suggestions && ROWS[pi].suggestions[pj];
-    if (s) mapRepo(pi, s.url);
+}
+async function suggestRepo(index) {
+  if (state.busy) return;
+  const row = state.rows[index];
+  if (!row) return;
+  const query = row.suggested_repo || row.name;
+  say(`Buscando donos para ${query}…`, "info");
+  try {
+    const result = await api(`/api/suggest?q=${encodeURIComponent(query)}`, {}, 30000);
+    row.suggestions = result.items || [];
+    render();
+    say(row.suggestions.length ? `${row.suggestions.length} sugestões encontradas.` : "Nenhuma sugestão encontrada.", row.suggestions.length ? "success" : "warning", true);
+  } catch (error) {
+    say(`Falha ao buscar sugestões: ${error.message}`, "error", true);
+  }
+}
+async function updateAll() {
+  const rows = visibleRows().filter((row) => row.mapped && row.behind === true);
+  if (!rows.length) {
+    say("Nenhuma atualização disponível nesta lista.", "info", true);
     return;
   }
-  if (t.dataset.upd !== undefined) doUpdate(ROWS[Number(t.dataset.upd)].name);
-  if (t.dataset.rb !== undefined) doRollback(ROWS[Number(t.dataset.rb)].name);
-  if (t.dataset.check1 !== undefined) doCheck();
+  setBusy(true);
+  let succeeded = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const ok = await doUpdate(row.name, true);
+    if (ok) succeeded += 1;
+    else failed += 1;
+  }
+  setBusy(false);
+  say(failed ? `${succeeded} atualizados, ${failed} com falha.` : `${succeeded} repositórios atualizados.`, failed ? "warning" : "success", true);
+  refreshLog();
+}
+function toggleTheme() {
+  state.theme = state.theme === "dark" ? "light" : "dark";
+  document.body.dataset.theme = state.theme;
+  $("theme-label").textContent = state.theme === "dark" ? "Escuro" : "Claro";
+  storeSet("alldown.theme", state.theme);
+}
+function syncSidebarAccessibility() {
+  const mobile = window.matchMedia ? window.matchMedia("(max-width: 860px)").matches : false;
+  const open = dom.sidebar.classList.contains("is-open");
+  dom.sidebar.inert = Boolean(mobile && !open);
+  dom.sidebar.setAttribute("aria-hidden", mobile && !open ? "true" : "false");
+}
+function toggleSidebar() {
+  const open = !dom.sidebar.classList.contains("is-open");
+  dom.sidebar.classList.toggle("is-open", open);
+  dom.scrim.classList.toggle("is-visible", open);
+  const menu = document.querySelector(".mobile-menu");
+  menu?.setAttribute("aria-expanded", open ? "true" : "false");
+  menu?.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
+  syncSidebarAccessibility();
+}
+function closeSidebar() {
+  dom.sidebar.classList.remove("is-open");
+  dom.scrim.classList.remove("is-visible");
+  const menu = document.querySelector(".mobile-menu");
+  menu?.setAttribute("aria-expanded", "false");
+  menu?.setAttribute("aria-label", "Abrir menu");
+  syncSidebarAccessibility();
+}
+function focusScan() {
+  setView("library");
+  window.setTimeout(() => dom.pathInput.focus(), 40);
+}
+function handleAction(action, element) {
+  const index = Number(element.dataset.index);
+  const busyActions = new Set(["check-row", "update-row", "rollback-row", "save-map", "suggest", "pick-suggestion", "refresh"]);
+  if (state.busy && busyActions.has(action)) return;
+  if (action === "toggle-sidebar") toggleSidebar();
+  if (action === "close-sidebar") closeSidebar();
+  if (action === "toggle-theme") toggleTheme();
+  if (action === "focus-scan") focusScan();
+  if (action === "refresh-token") refreshToken();
+  if (action === "refresh-log") refreshLog();
+  if (action === "refresh") {
+    if (state.base) doCheck();
+    else focusScan();
+  }
+  if (action === "check-row") doCheck();
+  if (action === "update-row") {
+    const row = state.rows[index];
+    if (row?.behind === true) doUpdate(row.name);
+    else doCheck();
+  }
+  if (action === "rollback-row") doRollback(state.rows[index]?.name);
+  if (action === "save-map") {
+    const input = dom.repoList.querySelector(`[data-url-input="${index}"]`);
+    mapRepo(index, input?.value);
+  }
+  if (action === "suggest") suggestRepo(index);
+  if (action === "pick-suggestion") {
+    const suggestion = state.rows[index]?.suggestions?.[Number(element.dataset.suggestion)];
+    if (suggestion) mapRepo(index, suggestion.url);
+  }
+}
+function init() {
+  state.query = storeGet("alldown.query") || "";
+  const storedFilter = storeGet("alldown.filter");
+  if (FILTER_INFO[storedFilter]) state.filter = storedFilter;
+  state.theme = storeGet("alldown.theme") === "light" ? "light" : "dark";
+  document.body.dataset.theme = state.theme;
+  document.querySelectorAll(".sidebar svg, .topbar svg, .button svg, .icon-button svg").forEach((svg) => svg.setAttribute("aria-hidden", "true"));
+  $("theme-label").textContent = state.theme === "dark" ? "Escuro" : "Claro";
+  state.auto = storeGet("alldown.auto") !== "0";
+  dom.pathInput.value = storeGet("alldown.path") || "";
+  paintToggles();
+  render();
+  setBusy(false);
+  setView("library");
+  syncSidebarAccessibility();
+  refreshToken();
+  refreshLog();
+  window.setInterval(refreshLog, 8000);
+  if (state.auto && looksLikePath(dom.pathInput.value.trim())) window.setTimeout(doScan, 120);
+}
+$("form-path").addEventListener("submit", (event) => {
+  event.preventDefault();
+  doScan();
 });
-$("form-path").addEventListener("submit", (e) => { e.preventDefault(); doScan(); });
-$("chips").addEventListener("click", (ev) => {
-  const node = ev.target;
-  const el = node instanceof HTMLElement ? node : node && node.parentElement;
-  const t = el && el.closest ? el.closest("[data-chip]") : null;
-  if (t && $("chips").contains(t)) setFilter(t.dataset.chip, true);
+dom.search.addEventListener("input", (event) => {
+  state.query = event.target.value;
+  storeSet("alldown.query", state.query);
+  render();
 });
-let qdeb = null;
-$("in-search").addEventListener("input", (ev) => {
-  qdeb = rearm(qdeb, () => { FQ = ev.target.value; setFilter(null, true); }, 300);
+$("filters").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-filter]");
+  if (button) setFilter(button.dataset.filter);
 });
-pathInput.addEventListener("input", () => {
-  clearTimeout(debounce);
-  debounce = null;
-  if (!autoDetect) return;
-  const v = pathInput.value.trim();
-  if (!looksLikePath(v)) return;
-  if (v === BASE && !lastScanFailed) return;
-  debounce = rearm(debounce, doScan, 700);
+dom.btnScan.addEventListener("click", doScan);
+dom.btnCheck.addEventListener("click", () => doCheck());
+dom.btnAll.addEventListener("click", updateAll);
+dom.btnAuto.addEventListener("click", () => {
+  state.auto = !state.auto;
+  storeSet("alldown.auto", state.auto ? "1" : "0");
+  paintToggles();
+  say(state.auto ? "Detecção automática ativada." : "Detecção automática pausada.", "info", true);
+  if (state.auto && looksLikePath(dom.pathInput.value.trim()) && dom.pathInput.value.trim() !== state.base) doScan();
 });
-setInterval(refreshLog, 8000);
-paintAutoBtn();
-paintMode();
-paintBackup();
-refreshToken();
-render();
-if (autoDetect && looksLikePath(pathInput.value.trim())) doScan();
+dom.btnMode.addEventListener("click", () => {
+  const next = !state.zipOnly;
+  postFlag("/api/mode", { zip_only: next }, (result) => {
+    state.zipOnly = Boolean(result.zip_only);
+    say(state.zipOnly ? "Modo somente ZIP ativado." : "Modo pasta ativado.", "success", true);
+  });
+});
+dom.btnBackup.addEventListener("click", () => {
+  const next = !state.backup;
+  postFlag("/api/backup", { backup: next }, (result) => {
+    state.backup = Boolean(result.backup);
+    say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
+  });
+});
+dom.pathInput.addEventListener("input", () => {
+  if (!state.auto || !looksLikePath(dom.pathInput.value.trim())) return;
+  if (dom.pathInput.value.trim() === state.base && !state.lastScanFailed) return;
+  window.clearTimeout(state.pathTimer);
+  state.pathTimer = window.setTimeout(doScan, 700);
+});
+dom.repoList.addEventListener("click", (event) => {
+  const element = event.target.closest("[data-action]");
+  if (element) handleAction(element.dataset.action, element);
+});
+document.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-view]");
+  if (viewButton) {
+    setView(viewButton.dataset.view);
+    return;
+  }
+  const actionButton = event.target.closest("[data-action]");
+  if (actionButton && !dom.repoList.contains(actionButton)) handleAction(actionButton.dataset.action, actionButton);
+});
+window.addEventListener("resize", syncSidebarAccessibility);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeSidebar();
+    return;
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  const tag = event.target?.tagName || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (event.key.toLowerCase() === "e") {
+    event.preventDefault();
+    doScan();
+  }
+  if (event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    doCheck();
+  }
+});
+init();

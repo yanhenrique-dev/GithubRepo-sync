@@ -15,7 +15,7 @@ def test_mapping_roundtrip(tmp_path):
 
 def test_mapping_legacy_string_and_invalid(tmp_path):
     (tmp_path / "repos.json").write_text(json.dumps({"a": "https://github.com/o/r"}), encoding="utf-8")
-    assert load_mapping(tmp_path) == {"a": {"url": "https://github.com/o/r", "branch": "main"}}
+    assert load_mapping(tmp_path) == {"a": {"url": "https://github.com/o/r"}}
 
     (tmp_path / "repos.json").write_text("not-json{{{", encoding="utf-8")
     assert load_mapping(tmp_path) == {}

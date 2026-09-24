@@ -52,21 +52,18 @@ def _run(coro):
 def test_fetch_remote_ok_and_cache_ttl(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "dummy")
     commit = {"sha": "abc123", "commit": {"author": {"date": "2026-01-01"}, "message": "oi"}}
-    release = {"tag_name": "v1", "zipball_url": "https://x/y.zip"}
-
     def handler(url, kwargs):
         if url.endswith("/commits/main"):
             return _resp(200, json_data=commit)
-        if url.endswith("/releases/latest"):
-            return _resp(200, json_data=release)
         raise AssertionError(url)
 
     clients = _install_fake(monkeypatch, handler)
 
     out1 = _run(gh.fetch_remote("o", "r", "main"))
     assert out1["remote_sha"] == "abc123"
-    assert out1["release_tag"] == "v1"
-    assert len(clients) == 1 and len(clients[0].calls) == 2
+    assert out1["release_tag"] is None
+    assert out1["source"] == "branch"
+    assert len(clients) == 1 and len(clients[0].calls) == 1
 
     # dentro do TTL: não bate rede de novo
     out2 = _run(gh.fetch_remote("o", "r", "main"))

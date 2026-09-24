@@ -57,7 +57,8 @@ def test_zip_only_sem_backup(tmp_path, monkeypatch):
 
 
 def test_update_one_retorna_tamanhos(tmp_path, monkeypatch):
-    import io, zipfile as zf
+    import io
+    import zipfile as zf
     buf = io.BytesIO()
     with zf.ZipFile(buf, "w") as z:
         z.writestr("r/novo.txt", "x" * 100)
@@ -74,7 +75,8 @@ def test_update_one_retorna_tamanhos(tmp_path, monkeypatch):
 
 
 def test_update_zip_only_retorna_tamanhos_e_stats(tmp_path, monkeypatch):
-    import io, zipfile as zf
+    import io
+    import zipfile as zf
     buf = io.BytesIO()
     with zf.ZipFile(buf, "w") as z:
         z.writestr("r/n.txt", "z" * 200)

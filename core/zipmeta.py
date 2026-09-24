@@ -35,6 +35,10 @@ CANDIDATES = (
     "citation.cff",
     "readme.md",  # último recurso: badges do README quase sempre apontam p/ o próprio repo
 )
+METADATA_READ_LIMIT = 64 * 1024
+MAX_METADATA_ENTRIES = 50000
+MAX_METADATA_FILES = 10000
+MAX_METADATA_TOTAL_UNCOMPRESSED = 512 * 1024 * 1024
 
 
 def _key(filename: str) -> str | None:
@@ -109,6 +113,16 @@ def _hit_from_file(kind: str, text: str, guess: str) -> tuple[str, str] | None:
     return _from_text(text)
 
 
+def _read_zip_prefix(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    with archive.open(info) as stream:
+        return stream.read(METADATA_READ_LIMIT)
+
+
+def _read_file_prefix(path: Path) -> bytes:
+    with path.open("rb") as stream:
+        return stream.read(METADATA_READ_LIMIT)
+
+
 def explain_zip(zip_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
     """Igual inspect_zip, mas devolve também o que foi vasculhado.
 
@@ -118,18 +132,23 @@ def explain_zip(zip_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
     notes: list[str] = []
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            infos = [i for i in zf.infolist() if not i.is_dir()]
+            all_infos = zf.infolist()
+            if len(all_infos) > MAX_METADATA_ENTRIES:
+                return None, ["zip com entradas demais"]
+            if sum(i.file_size for i in all_infos) > MAX_METADATA_TOTAL_UNCOMPRESSED:
+                return None, ["zip grande demais"]
+            infos = [i for i in all_infos if not i.is_dir()]
             if not infos:
                 return None, ["zip vazio"]
             # por tipo de arquivo, tenta SÓ o mais raso (evita package.json de
             # exemplo/subpacote roubar o mapeamento do projeto real)
-            shallowest: dict[str, object] = {}
+            shallowest: dict[str, zipfile.ZipInfo] = {}
             for info in infos:
                 key = _key(info.filename)
                 if key is None:
                     continue
                 prev = shallowest.get(key)
-                if prev is None or info.filename.count("/") < prev.filename.count("/"):  # type: ignore[union-attr]
+                if prev is None or info.filename.count("/") < prev.filename.count("/"):
                     shallowest[key] = info
             if not shallowest:
                 return None, ["sem package.json/README no zip"]
@@ -138,8 +157,8 @@ def explain_zip(zip_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
                 if info is None:
                     continue
                 try:
-                    raw = zf.read(info.filename, pwd=None)[:65536].decode("utf-8", "ignore")  # type: ignore[union-attr]
-                except (KeyError, RuntimeError, zipfile.BadZipFile):
+                    raw = _read_zip_prefix(zf, info).decode("utf-8", "ignore")
+                except (KeyError, RuntimeError, zipfile.BadZipFile, OSError, EOFError):
                     notes.append(f"{wanted}: ilegível")
                     continue
                 hit = _hit_from_file(wanted, raw, guess)
@@ -161,7 +180,14 @@ def explain_dir(dir_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
     guess = strip_branch_suffix(dir_path.name)
     notes: list[str] = []
     try:
-        children = {p.name.lower(): p for p in dir_path.iterdir() if p.is_file()}
+        entries = list(dir_path.iterdir())
+        if len(entries) > MAX_METADATA_FILES:
+            return None, ["pasta com arquivos demais"]
+        children = {
+            p.name.lower(): p
+            for p in entries
+            if p.is_file() and not p.is_symlink()
+        }
     except PermissionError:
         return None, ["sem permissão na pasta"]
     except OSError:
@@ -177,7 +203,7 @@ def explain_dir(dir_path: Path) -> tuple[tuple[str, str] | None, list[str]]:
         if fp is None:
             continue
         try:
-            raw = fp.read_bytes()[:65536].decode("utf-8", "ignore")
+            raw = _read_file_prefix(fp).decode("utf-8", "ignore")
         except OSError:
             notes.append(f"{wanted}: ilegível")
             continue

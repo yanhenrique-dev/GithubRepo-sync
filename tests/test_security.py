@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 
 import core.updater as upd
-from core.updater import is_forbidden_base
 from core.scanner import scan_base
+from core.updater import is_forbidden_base
 
 
 class _StreamResp:
@@ -101,14 +101,17 @@ def test_scan_ignora_dotfiles_e_symlinks(tmp_path):
 
 def test_tray_lock_exclusivo(tmp_path, monkeypatch):
     import os
+
     import tray
 
     monkeypatch.setattr(tray, "LOCK", tmp_path / "t.lock")
     assert tray.claim_lock(os.getpid()) is True
-    # segundo claim com lock de processo vivo -> False
-    assert tray.claim_lock(os.getpid() + 1) is False or True  # pid+1 pode não existir
+    real_lock_alive = tray.lock_alive
+    monkeypatch.setattr(tray, "lock_alive", lambda: True)
+    assert tray.claim_lock(os.getpid() + 1) is False
+    monkeypatch.setattr(tray, "lock_alive", real_lock_alive)
     (tmp_path / "t.lock").write_text("99999999")
-    assert tray.claim_lock(os.getpid()) is True  # stale limpo
+    assert tray.claim_lock(os.getpid()) is True
     assert (tmp_path / "t.lock").read_text().strip() == str(os.getpid())
 
 

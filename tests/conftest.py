@@ -1,8 +1,6 @@
 """Isolamento global: sem rede real, sem ~/.hermes, sem .env real."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 import core.github as gh
@@ -18,6 +16,8 @@ def _isolate(tmp_path, monkeypatch):
     # Limpa caches entre testes.
     gh._cache.clear()
     gh._rate_cache.clear()
+    gh._branch_cache.clear()
     yield
     gh._cache.clear()
     gh._rate_cache.clear()
+    gh._branch_cache.clear()
