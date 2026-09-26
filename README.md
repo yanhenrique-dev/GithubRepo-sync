@@ -91,7 +91,7 @@ Abra **http://127.0.0.1:8000**, cole a pasta dos repos — a detecção é autom
 │   ├── github.py     # API do GitHub: check, suggest, cota
 │   ├── updater.py    # download, troca, backup, rollback
 │   └── state.py      # mapping / state / config por pasta (.alldown/)
-├── static/           # front vanilla: index.html, style.css, app.js
+├── static/           # front vanilla: index.html, tokens.css, components.css, shell.css, app.js
 ├── pyproject.toml    # lint e pytest
 └── requirements.txt
 ```
