@@ -18,6 +18,18 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from core.contract import (
+    CheckResponse,
+    FlagResponse,
+    HealthResponse,
+    LogResponse,
+    OkResponse,
+    RollbackResponse,
+    ScanResponse,
+    SuggestResponse,
+    TokenStatus,
+    UpdateResponse,
+)
 from core.github import (
     fetch_remote,
     invalidate_remote,
@@ -223,7 +235,7 @@ def index():
     return FileResponse("static/index.html")
 
 
-@app.get("/api/scan")
+@app.get("/api/scan", response_model=ScanResponse)
 async def api_scan(path: str):
     b = resolve_base(path)
     try:
@@ -246,7 +258,7 @@ async def api_scan(path: str):
     return {"path": str(b), "items": items, "zip_only": cfg["zip_only"], "backup": cfg["backup"]}
 
 
-@app.get("/api/check")
+@app.get("/api/check", response_model=CheckResponse)
 async def api_check(path: str):
     b = resolve_base(path)
     try:
@@ -332,7 +344,7 @@ async def api_check(path: str):
     return {"path": str(b), "items": out}
 
 
-@app.post("/api/map")
+@app.post("/api/map", response_model=OkResponse)
 def api_map(body: MapBody):
     b = resolve_base(body.path)
     _check_name(body.name)
@@ -366,12 +378,12 @@ def _set_config_flag(path: str, key: str, value: bool, label: str) -> dict:
     return {"ok": True, key: value}
 
 
-@app.post("/api/mode")
+@app.post("/api/mode", response_model=FlagResponse)
 def api_mode(body: ModeBody):
     return _set_config_flag(body.path, "zip_only", body.zip_only, "MODE")
 
 
-@app.post("/api/backup")
+@app.post("/api/backup", response_model=FlagResponse)
 def api_backup(body: BackupBody):
     return _set_config_flag(body.path, "backup", body.backup, "BACKUP")
 
@@ -429,7 +441,7 @@ def _persist_resolved_branch(base: Path, item: dict, branch: str) -> None:
         log(f"BRANCH {item['name']} não persistida: {exc}")
 
 
-@app.post("/api/update")
+@app.post("/api/update", response_model=UpdateResponse)
 async def api_update(body: UpdateBody):
     b = resolve_base(body.path)
     _check_name(body.name)
@@ -497,7 +509,7 @@ async def api_update(body: UpdateBody):
         return {"ok": True, **res, "remote_sha": remote["remote_sha"], "zip_only": zip_only}
 
 
-@app.post("/api/rollback")
+@app.post("/api/rollback", response_model=RollbackResponse)
 async def api_rollback(body: UpdateBody):
     b = resolve_base(body.path)
     _check_name(body.name)
@@ -510,22 +522,22 @@ async def api_rollback(body: UpdateBody):
         return {"ok": True, **res}
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse)
 def api_health():
     return {"ok": True, "service": "RepoRefresh"}
 
 
-@app.get("/api/log")
+@app.get("/api/log", response_model=LogResponse)
 def api_log():
     return {"lines": list(LOG)}
 
 
-@app.get("/api/token")
+@app.get("/api/token", response_model=TokenStatus)
 async def api_token():
     return await token_status()
 
 
-@app.get("/api/suggest")
+@app.get("/api/suggest", response_model=SuggestResponse)
 async def api_suggest(q: str):
     try:
         items = await suggest_repos(q)
