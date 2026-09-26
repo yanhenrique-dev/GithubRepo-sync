@@ -86,12 +86,15 @@ Abra **http://127.0.0.1:8000**, cole a pasta dos repos — a detecção é autom
 ```
 ├── app.py            # FastAPI + rotas
 ├── core/
+│   ├── contract.py   # contrato canônico das respostas (Pydantic) + response_model
 │   ├── scanner.py    # descobre pastas/zips e resolve owner/repo
 │   ├── zipmeta.py    # lê dono de dentro do zip (sem rede)
 │   ├── github.py     # API do GitHub: check, suggest, cota
 │   ├── updater.py    # download, troca, backup, rollback
 │   └── state.py      # mapping / state / config por pasta (.alldown/)
-├── static/           # front vanilla: index.html, tokens.css, components.css, shell.css, app.js
+├── static/           # front vanilla: index.html, tokens.css, components.css,
+│                     #   shell.css, app.js, theme.js, contract/openapi.json
+├── tests/js/         # testes do frontend (node --test, sem build)
 ├── pyproject.toml    # lint e pytest
 └── requirements.txt
 ```
@@ -105,11 +108,22 @@ Por pasta escaneada, o mapeamento fica em `<pasta>/repos.json` e o estado em `<p
 Execute estes comandos antes de abrir pull request:
 
 ```bash
-.venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m pytest tests/ -q          # 169 testes (backend + contrato)
+node --test tests/js/*.test.mjs                # 23 testes do frontend
 node --check static/app.js
-uvx --from ruff==0.16.8 ruff check app.py core tray.py
+uvx --from ruff==0.16.8 ruff check app.py core tray.py tests/
 uvx --from pyright==1.1.414 pyright --pythonpath .venv/bin/python app.py core tray.py
 ```
+
+## Contrato da API
+
+`core/contract.py` é o artefato canônico do formato das respostas. As rotas
+declaram `response_model=`, então o FastAPI valida a resposta no boundary.
+`static/contract/openapi.json` é o snapshot OpenAPI versionado, conferido por
+teste.
+
+Renomear ou remover um campo quebra um teste — de qualquer lado da fronteira.
+Ver [docs/CONTRACT.md](docs/CONTRACT.md).
 
 ## Operação segura
 
