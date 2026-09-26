@@ -19,14 +19,14 @@ test("J1: item sem dono QUE TAMBÉM tem erro mostra o tag em danger, não info",
 
   // o que o render efetivamente emite na coluna Estado
   const html = s.renderRow(row, 0);
-  const stateTag = html.match(/<td><span data-component="tag"[^>]*>[^<]*<\/span><\/td>/);
-  assert.ok(stateTag, `tag de estado não encontrado em:\n${html}`);
+  // ancora pelo conteúdo, não por posição: a célula de branch também é um tag
+  const erroTag = html.match(/<span data-component="tag"[^>]*>Erro<\/span>/);
+  assert.ok(erroTag, `tag "Erro" não encontrado em:\n${html}`);
   assert.match(
-    stateTag[0],
+    erroTag[0],
     /data-variant="danger"/,
-    `tag de erro saiu na cor errada:\n${stateTag[0]}`
+    `tag de erro saiu na cor errada:\n${erroTag[0]}`
   );
-  assert.match(stateTag[0], />Erro</, "o rótulo deve continuar sendo 'Erro'");
 });
 
 test("J3: o esqueleto de loading aparece enquanto o scan está em andamento", () => {

@@ -112,17 +112,26 @@ function shortSha(value) {
 }
 function formatSize(bytes) {
   if (bytes == null) return "?";
+  const value = Number(bytes);
+  // NaN, Infinity e negativo são indício de dado ruim na API: mostra "?"
+  // em vez de vazar "NaN B" / "-5,0 B" para a tela.
+  if (!Number.isFinite(value) || value < 0) return "?";
   const units = ["B", "KB", "MB", "GB"];
-  let value = Number(bytes);
+  let amount = value;
   let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
     index += 1;
   }
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1).replace(".", ",")} ${units[index]}`;
+  // Bytes são contagens inteiras: "0 B", não "0,0 B".
+  const rendered = index === 0 || amount >= 100
+    ? String(Math.round(amount))
+    : amount.toFixed(1).replace(".", ",");
+  return `${rendered} ${units[index]}`;
 }
 function formatSpeed(bytesPerSecond) {
-  return bytesPerSecond == null ? "?" : `${formatSize(bytesPerSecond)}/s`;
+  const size = formatSize(bytesPerSecond);
+  return size === "?" ? "?" : `${size}/s`;
 }
 function looksLikePath(value) {
   return value.length > 1 && (value.startsWith("/") || value.startsWith("~"));
@@ -141,6 +150,13 @@ function statusInfo(row) {
 function initials(row) {
   const source = row.owner && row.repo ? `${row.owner}${row.repo}` : row.name || "R";
   return source.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "R";
+}
+
+/* Tag de estado. O tone vem SEMPRE de statusInfo — os dois ramos de renderRow
+   usam este helper, para que "Erro" nunca saia na cor de "info". */
+function statusTag(status) {
+  const variant = status.tone === "neutral" ? "" : ` data-variant="${status.tone}"`;
+  return `<span data-component="tag"${variant} title="${esc(status.detail)}">${esc(status.label)}</span>`;
 }
 
 function artifactLabel(row) {
@@ -251,7 +267,7 @@ function renderRow(row, index) {
         <td>${esc(artifactLabel(row))}</td>
         <td><code>—</code></td>
         <td><code>—</code></td>
-        <td><span data-component="tag" data-variant="info" title="${esc(status.detail)}">${esc(status.label)}</span></td>
+        <td>${statusTag(status)}</td>
         <td data-align="end"></td>
       </tr>${renderMapForm(row, index)}`;
   }
@@ -277,7 +293,7 @@ function renderRow(row, index) {
       <td>${esc(artifactLabel(row))}</td>
       <td><code>${esc(shortSha(row.local_sha))}</code></td>
       <td><code>${esc(shortSha(row.remote_sha))}</code></td>
-      <td><span data-component="tag"${status.tone === "neutral" ? "" : ` data-variant="${status.tone}"`} title="${esc(status.detail)}">${esc(status.label)}</span></td>
+      <td>${statusTag(status)}</td>
       <td data-align="end">
         <div class="repo-actions">
           <button data-component="icon-button-v2" data-variant="ghost" data-size="normal" type="button" data-action="check-row" data-index="${index}" title="Checar atualizações" aria-label="Checar ${esc(row.name)}">${icon("refresh")}</button>
@@ -505,6 +521,10 @@ function setBusy(value) {
   dom.syncDot.dataset.tone = value ? "busy" : "ok";
   dom.syncLabel.textContent = value ? "processando" : "pronto";
   dom.statusProgress.hidden = !value;
+  // O render precisa acompanhar a virada de busy: sem isso nao aparece o
+  // esqueleto durante a espera da rede (/api/scan tem timeout de 900 s) e,
+  // pior, um scan que volte vazio deixa a tabela presa no skeleton.
+  render();
 }
 
 /* Troca data-variant preservando os outros atributos do botão. */
