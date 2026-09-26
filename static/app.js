@@ -533,6 +533,29 @@ function setVariant(element, variant) {
 }
 
 /* -------------------------------------------------------------------- api */
+
+/* Erro tipado. `code` faz parte do contrato entre a camada de rede e quem
+   chama: é o que permite distinguir "recusa definitiva" de "não deu para
+   saber", que em um app que apaga diretório não é a mesma coisa.
+     TIMEOUT — o cliente desistiu, mas o servidor pode ter concluído
+     NETWORK — servidor fora do ar; estado no disco é desconhecido
+     HTTP    — o servidor respondeu e recusou; nada foi feito
+*/
+class ApiError extends Error {
+  constructor(message, code, status = 0) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+
+  /* Indeterminado = não sabemos o que aconteceu no disco. Numa operação
+     destrutiva, tratar isso como falha mente para o usuário. */
+  get indeterminate() {
+    return this.code === "TIMEOUT" || this.code === "NETWORK";
+  }
+}
+
 async function api(path, options = {}, timeoutMs = 90000) {
   const controller = timeoutMs > 0 ? new AbortController() : null;
   const timer = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
@@ -543,14 +566,36 @@ async function api(path, options = {}, timeoutMs = 90000) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = payload && payload.detail;
-      throw new Error(typeof detail === "string" ? detail : `HTTP ${response.status}`);
+      throw new ApiError(
+        typeof detail === "string" ? detail : `HTTP ${response.status}`,
+        "HTTP",
+        response.status
+      );
     }
     return payload;
   } catch (error) {
-    if (error && error.name === "AbortError") throw new Error("Tempo esgotado");
-    throw error;
+    if (error instanceof ApiError) throw error;
+    if (error && error.name === "AbortError") throw new ApiError("Tempo esgotado", "TIMEOUT");
+    throw new ApiError(`Servidor local não respondeu: ${error.message}`, "NETWORK");
   } finally {
     if (timer) window.clearTimeout(timer);
+  }
+}
+
+/* Reconsulta o GitHub para descobrir o que de fato aconteceu depois de um
+   erro indeterminado. Devolve "desconhecido" quando nem a reconsulta
+   responde — aí, e só aí, cabe dizer que não se sabe. */
+async function settleByRecheck(name) {
+  try {
+    const result = await api(`/api/check?path=${encodeURIComponent(state.base)}`, {}, 900000);
+    const found = (result.items || []).find((entry) => entry.name === name);
+    if (!found) return { known: false };
+    if (found.error) return { known: true, done: false, reason: found.error };
+    if (found.behind === false) return { known: true, done: true };
+    if (found.behind === true) return { known: true, done: false, reason: "o commit remoto ainda não é o local" };
+    return { known: false };
+  } catch {
+    return { known: false };
   }
 }
 
@@ -705,6 +750,34 @@ async function doUpdate(name, quiet = false) {
     say(`${name} atualizado. ${transfer}. ${packageSize}.`, "success", true);
     return true;
   } catch (error) {
+    // Tempo esgotado não é sinônimo de fracasso: o servidor pode ter
+    // concluído a troca depois de o cliente desistir. Reconsulta antes de
+    // dizer que falhou.
+    if (error instanceof ApiError && error.indeterminate) {
+      const verdict = await settleByRecheck(name);
+      if (verdict.known && verdict.done) {
+        row.local_sha = row.remote_sha;
+        row.behind = false;
+        row.error = null;
+        render();
+        say(`${name} foi atualizado, mas a resposta se perdeu. O estado em disco confere.`, "success", true);
+        return true;
+      }
+      if (verdict.known) {
+        row.error = verdict.reason;
+        render();
+        say(`Falha em ${name}: ${verdict.reason}`, "danger", true);
+        return false;
+      }
+      row.error = error.message;
+      render();
+      say(
+        `${name}: deu tempo esgotado e não deu para confirmar o estado. Reexecute o check antes de tentar de novo.`,
+        "warning",
+        true
+      );
+      return false;
+    }
     row.error = error.message;
     say(`Falha em ${name}: ${error.message}`, "danger", true);
     return false;

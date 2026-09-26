@@ -61,9 +61,11 @@ function makeEl(tag = "div", id = "") {
  * @param {object[]} [opts.check] items devolvidos por /api/check
  * @param {string} [opts.path]   valor semeado em localStorage["alldown.path"]
  * @param {boolean} [opts.autoScan] semeia localStorage["alldown.auto"]="1"
+ * @param {Function} [opts.fetchImpl] substitui o stub de fetch (para simular
+ *        timeout, rede caída e respostas por endpoint)
  */
 export function loadApp(opts = {}) {
-  const { scan = { path: "", items: [], zip_only: false, backup: true }, check = [], path = "", autoScan = false } = opts;
+  const { scan = { path: "", items: [], zip_only: false, backup: true }, check = [], path = "", autoScan = false, fetchImpl = null } = opts;
 
   const byId = new Map();
   // todos os ids declarados no index.html real
@@ -128,12 +130,15 @@ export function loadApp(opts = {}) {
     clearTimeout() {},
     setInterval: () => 0,
     URLSearchParams,
-    fetch: async (url) => {
+    fetch: fetchImpl ?? (async (url) => {
       const u = String(url);
       if (u.startsWith("/api/scan")) return { ok: true, status: 200, json: async () => scan };
       if (u.startsWith("/api/check")) return { ok: true, status: 200, json: async () => ({ items: check }) };
+      if (u.startsWith("/api/update")) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, name: "x", remote_sha: "a", zip_only: false, path: "/p", backup: null, old_bytes: 1, new_bytes: 2, download_bytes: 2, speed_bps: 1 }) };
+      }
       return { ok: true, status: 200, json: async () => ({ lines: [] }) };
-    },
+    }),
     window: { addEventListener() {}, setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {}, matchMedia },
   };
   sandbox.globalThis = sandbox;
