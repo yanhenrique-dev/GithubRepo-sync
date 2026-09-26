@@ -241,7 +241,7 @@ function renderMapForm(row, index) {
       <div class="map-form">
         <label class="text-input-v2" data-component="text-input-v2" for="url-${index}">
           <span data-slot="text-input-v2-value">
-            <input id="url-${index}" data-url-input="${index}" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://github.com/dono/repo…" data-slot="text-input-v2-input">
+            <input id="url-${index}" data-url-input="${index}" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://github.com/dono/repo…" aria-label="URL do GitHub para ${esc(row.name)}" data-slot="text-input-v2-input">
           </span>
         </label>
         <button class="button-v2" data-component="button-v2" data-variant="contrast" data-size="normal" type="button" data-action="save-map" data-index="${index}" data-icon>
@@ -369,7 +369,7 @@ function render() {
   dom.filters.querySelectorAll("[data-filter]").forEach((button) => {
     const active = button.dataset.filter === state.filter;
     button.toggleAttribute("data-pressed", active);
-    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.setAttribute("aria-checked", active ? "true" : "false");
   });
 
   let html;
@@ -587,7 +587,7 @@ async function api(path, options = {}, timeoutMs = 90000) {
    responde — aí, e só aí, cabe dizer que não se sabe. */
 async function settleByRecheck(name) {
   try {
-    const result = await api(`/api/check?path=${encodeURIComponent(state.base)}`, {}, 900000);
+    const result = await api(`/api/check?path=${encodeURIComponent(state.base)}`, {}, 60000);
     const found = (result.items || []).find((entry) => entry.name === name);
     if (!found) return { known: false };
     if (found.error) return { known: true, done: false, reason: found.error };
@@ -674,11 +674,14 @@ async function doScan(options = {}) {
     if (state.auto && mapped) await doCheck(true);
   } catch (error) {
     state.lastScanFailed = true;
-    dom.pathInput.value = state.base || "";
-    storeSet("alldown.path", state.base || "");
+    // A falha não pode pisar no que o usuário já digitou depois desta tentativa.
+    if (dom.pathInput.value.trim() === path) {
+      dom.pathInput.value = state.base || "";
+      storeSet("alldown.path", state.base || "");
+      dom.pathInput.focus();
+    }
     setPathError(`Falha no scan: ${error.message}`);
     say(`Falha no scan: ${error.message}`, "danger", true);
-    dom.pathInput.focus();
   } finally {
     state.scanning = false;
     setBusy(false);
@@ -784,8 +787,10 @@ async function doUpdate(name, quiet = false) {
   } finally {
     row.busy = false;
     render();
-    if (!quiet) setBusy(false);
-    refreshLog();
+    if (!quiet) {
+      setBusy(false);
+      refreshLog();
+    }
   }
 }
 
@@ -886,6 +891,7 @@ async function updateAll() {
     failed ? "warning" : "success",
     true
   );
+  refreshLog();
 }
 
 /* --------------------------------------------------------------- switches */
@@ -1020,6 +1026,7 @@ function handleAction(action, element) {
     if (row?.behind === true) {
       if (state.confirmUpdate !== row.name) {
         state.confirmUpdate = row.name;
+        state.confirmRollback = null;
         render();
         say(`Confirme a atualização de ${row.name}: clique no botão de novo.`, "warning", true);
         return;
@@ -1035,6 +1042,7 @@ function handleAction(action, element) {
     if (!name) return;
     if (state.confirmRollback !== name) {
       state.confirmRollback = name;
+      state.confirmUpdate = null;
       render();
       say(`Confirme a reversão de ${name}: clique no botão de novo.`, "warning", true);
       return;
@@ -1080,7 +1088,8 @@ function init() {
   function scheduleLogRefresh() {
     if (logTimer) clearTimeout(logTimer);
     logTimer = setTimeout(() => {
-      refreshLog().finally(scheduleLogRefresh);
+      const active = document.visibilityState === "visible" && state.view === "activity";
+      (active ? refreshLog() : Promise.resolve()).finally(scheduleLogRefresh);
     }, 8000);
   }
   scheduleLogRefresh();
@@ -1090,19 +1099,35 @@ function init() {
 
 $("form-path").addEventListener("submit", (event) => {
   event.preventDefault();
+  window.clearTimeout(state.pathTimer);
   doScan();
 });
 
+let searchTimer = null;
 dom.search.addEventListener("input", (event) => {
   state.query = event.target.value;
   storeSet("alldown.query", state.query);
-  render();
-  writeHashState();
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    render();
+    writeHashState();
+  }, 150);
 });
 
 dom.filters.addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter]");
   if (button) setFilter(button.dataset.filter);
+});
+
+dom.filters.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
+  const current = buttons.indexOf(document.activeElement);
+  if (current === -1) return;
+  event.preventDefault();
+  const next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+  buttons[next].focus();
+  setFilter(buttons[next].dataset.filter);
 });
 
 dom.btnCheck.addEventListener("click", () => doCheck());
@@ -1168,6 +1193,13 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("resize", syncSidebarAccessibility);
 window.addEventListener("hashchange", applyHashState);
+
+document.querySelector(".skip-link")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  const viewport = dom.main.querySelector("[data-slot=scroll-view-viewport]");
+  viewport?.scrollTo({ top: 0 });
+  dom.main.focus({ preventScroll: true });
+});
 window.addEventListener("beforeunload", (event) => {
   const dirty = Array.from(dom.repoList.querySelectorAll("[data-url-input]")).some(
     (input) => String(input.value || "").trim() !== ""

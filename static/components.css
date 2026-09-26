@@ -104,6 +104,16 @@ body {
   outline-offset: 2.5px;
 }
 
+.noscript-note {
+  margin: 12px;
+  padding: 12px 16px;
+  border-radius: var(--v2-radius-surface);
+  background: var(--v2-state-bg-warning);
+  color: var(--v2-state-fg-warning);
+  font-size: var(--v2-text-label-size);
+  line-height: var(--v2-text-label-line);
+}
+
 /* --------------------------------------------------------------------------
    2.1 Button
    -------------------------------------------------------------------------- */
@@ -257,7 +267,7 @@ body {
   -webkit-user-select: none;
   user-select: none;
   outline: none;
-  cursor: default;
+  cursor: pointer;
   transition: background-color var(--v2-motion-control), color var(--v2-motion-control), box-shadow var(--v2-motion-control);
 }
 
@@ -720,7 +730,7 @@ body {
 [data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item"] {
   box-sizing: border-box;
   display: flex;
-  flex: 1 1 0;
+  flex: 1 0 auto;
   flex-direction: row;
   align-items: center;
   justify-content: center;
@@ -728,7 +738,7 @@ body {
   min-width: 0;
   height: 28px;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--v2-radius-input);
   background: transparent;
@@ -753,8 +763,9 @@ body {
   box-shadow: 0 0 0 0.5px var(--v2-border-border-strong);
   z-index: 1;
 }
-[data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item-label"] { display: flex; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item-count"] { color: var(--v2-text-text-faint); }
+[data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item-label"] { display: flex; align-items: baseline; gap: 4px; min-width: 0; max-width: 100%; white-space: nowrap; }
+[data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item-text"] { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+[data-component="segmented-control-v2"] [data-slot="segmented-control-v2-item-count"] { flex: none; color: var(--v2-text-text-faint); }
 
 /* --------------------------------------------------------------------------
    2.8 Tooltip
@@ -1131,7 +1142,7 @@ body {
   top: 0;
   width: 12px;
   opacity: 0;
-  pointer-events: auto;
+  pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
   transition: opacity var(--v2-motion-thumb-opacity);
