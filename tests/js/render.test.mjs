@@ -128,6 +128,150 @@ test("branch e nome com aspas não quebram os atributos", () => {
   assert.match(html, /&quot;/);
 });
 
+/* --------------------------------------------- rascunho sobrevive ao re-render */
+/** payload de scan com uma linha sem dono, que e quem recebe o formulario de mapear */
+function scanComSemDono(nomes = ["aaa", "bbb"]) {
+  return {
+    path: "/base",
+    items: nomes.map((n) =>
+      item({ name: n, mapped: false, owner: null, repo: null, github_url: null })
+    ),
+    zip_only: false,
+    backup: true,
+  };
+}
+
+test("o que foi digitado no formulário de mapeamento sobrevive ao re-render", async () => {
+  const { sandbox: s, repoList, settle } = loadApp({
+    scan: scanComSemDono(["aaa"]),
+    path: "/base",
+    autoScan: true,
+  });
+  await settle();
+
+  const input = repoList.__inputs[0];
+  assert.ok(input, `premissa: o scan sem dono tem que renderizar o formulário:\n${repoList.innerHTML.slice(0, 300)}`);
+
+  // o usuário digita a URL e continua com o cursor no meio dela
+  const digitado = "https://github.com/acme/widget";
+  input.value = digitado;
+  input.selectionStart = 7;
+  input.selectionEnd = 7;
+  s.document.activeElement = input;
+
+  s.render(); // qualquer evento dispara isto: busca, filtro, setBusy, update
+
+  const depois = repoList.__inputs[0];
+  assert.equal(depois.value, digitado, "o texto digitado foi apagado pelo re-render");
+  assert.equal(depois.focused, 1, "o foco não voltou para o input");
+  assert.equal(depois.selectionStart, 7, "o cursor não voltou ao lugar");
+  assert.equal(depois.selectionEnd, 7);
+});
+
+test("o rascunho acompanha a LINHA, não a posição", async () => {
+  // Se o rascunho fosse chaveado pelo índice, digitar em "aaa" e depois filtrar
+  // para "bbb" jogaria a URL na linha errada — o pior tipo de bug aqui, porque
+  // "Salvar" gravaria o repositório na pessoa errada.
+  const { sandbox: s, repoList, settle } = loadApp({
+    scan: scanComSemDono(["aaa", "bbb"]),
+    path: "/base",
+    autoScan: true,
+  });
+  await settle();
+
+  const primeiro = repoList.__inputs.find((el) => el.label === "aaa");
+  assert.ok(primeiro, `premissa: as duas linhas têm formulário:\n${repoList.innerHTML.slice(0, 300)}`);
+  primeiro.value = "https://github.com/acme/aaa";
+  s.document.activeElement = primeiro;
+
+  s.setFilter("all"); // força re-render com as duas linhas visíveis
+
+  const deNovo = repoList.__inputs;
+  assert.equal(deNovo.find((el) => el.label === "aaa").value, "https://github.com/acme/aaa");
+  assert.equal(deNovo.find((el) => el.label === "bbb").value, "", "o rascunho vazou para a linha errada");
+});
+
+test("re-render repetido não duplica nem degrada o rascunho", async () => {
+  const { sandbox: s, repoList, settle } = loadApp({
+    scan: scanComSemDono(["aaa"]),
+    path: "/base",
+    autoScan: true,
+  });
+  await settle();
+  repoList.__inputs[0].value = "https://github.com/acme/widget";
+
+  for (let i = 0; i < 5; i++) s.render();
+
+  assert.equal(repoList.__inputs.length, 1, "o re-render duplicou inputs");
+  assert.equal(repoList.__inputs[0].value, "https://github.com/acme/widget");
+});
+
+/* ------------------------------------------- o lote nao reconstroi a tabela toda */
+/** scan + check de N repos pendentes: e o unico jeito de `behind` ser true
+ *  (o ScannedItem do contrato nao tem `behind` — so o CheckItem tem). */
+function cenarioLote(n = 4) {
+  const nomes = Array.from({ length: n }, (_, i) => `repo${i}`);
+  return {
+    scan: {
+      path: "/base",
+      items: nomes.map((name) => item({ name, local_sha: "1111111", remote_sha: "2222222" })),
+      zip_only: false,
+      backup: true,
+    },
+    check: nomes.map((name) =>
+      item({ name, behind: true, local_sha: "1111111", remote_sha: "2222222" })
+    ),
+  };
+}
+
+test("o lote nao reconstroi o <tbody> tres vezes por repo", async () => {
+  // Antes: cada doUpdate pintava 3x (busy, sucesso, finally) e cada pintura
+  // reescrevia as N linhas. O render do meio — seguido imediatamente pelo do
+  // finally, sem nada visível no meio — foi eliminado.
+  const { scan, check } = cenarioLote(4);
+  const { sandbox: s, repoList, settle } = loadApp({ scan, check, path: "/base", autoScan: true });
+  await settle();
+
+  const base = repoList.__renders;
+  await s.updateAll();
+  // Overhead fixo do lote: os dois renders de setBusy (abre e fecha o busy).
+  const overhead = 2;
+  const porRepo = (repoList.__renders - base - overhead) / 4;
+
+  assert.ok(
+    porRepo <= 2,
+    `o lote ainda pinta o <tbody> ${porRepo.toFixed(1)}x por repo dentro do loop ` +
+      `(${repoList.__renders - base} reconstrucoes no total; o alvo e 2, o anterior era 3)`
+  );
+});
+
+test("depois do lote, o DOM e identico ao que um render completo produziria", async () => {
+  // Este e o invariante que importa para o render cirúrgico: se a linha foi
+  // corrigida na mao e algum campo ficou defasado, o HTML final diverge do que
+  // render() produziria com o mesmo estado. O lote termina com setBusy(false),
+  // que faz o render completo — entao a comparacao tem de fechar.
+  const { scan, check } = cenarioLote(3);
+  const { sandbox: s, repoList, settle } = loadApp({ scan, check, path: "/base", autoScan: true });
+  await settle();
+
+  await s.updateAll();
+  const depoisDoLote = repoList.innerHTML;
+  s.render();
+  assert.equal(
+    repoList.innerHTML,
+    depoisDoLote,
+    "o DOM ficou defasado em relacao ao render completo — totals/summary nao foram repintados"
+  );
+});
+
+test("renderRowInPlace devolve false quando a linha nao esta na vista", () => {
+  // A queda para o render() completo e o que mantem o lote correto quando o
+  // cirúrgico nao se aplica (linha filtrada, tbody vazio, sem replaceWith).
+  const { sandbox: s } = loadApp({});
+  assert.equal(s.renderRowInPlace(item({ name: "nao-existe" }), 99), false);
+});
+
+
 /* --------------------------------------------------------- empty states */
 test("sem pasta escolhida, o empty state oferece escolher a pasta", () => {
   const { sandbox: s } = loadApp({});

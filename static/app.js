@@ -22,6 +22,7 @@ const dom = {
   count: $("count"),
   status: $("status"),
   statusText: $("status-text"),
+  liveStatus: $("live-status"),
   statusIcon: $("status").querySelector("use"),
   statusProgress: $("status-progress"),
   log: $("log"),
@@ -83,7 +84,7 @@ const REDUCED_MOTION =
 
 const TONE_ICON = { success: "check", warning: "alert", danger: "alert", info: "activity" };
 
-if (!dom.repoList || !dom.pathInput || !dom.status || !dom.pathError || !dom.themeColor) {
+if (!dom.repoList || !dom.pathInput || !dom.status || !dom.pathError || !dom.themeColor || !dom.liveStatus) {
   throw new Error("RepoRefresh: interface não carregada");
 }
 
@@ -167,13 +168,15 @@ function artifactLabel(row) {
 }
 
 function countRows() {
-  const counts = {
-    all: state.rows.length,
-    behind: state.rows.filter((row) => row.behind === true).length,
-    ready: state.rows.filter((row) => row.behind === false).length,
-    unmapped: state.rows.filter((row) => !row.mapped).length,
-    error: state.rows.filter((row) => Boolean(row.error)).length,
-  };
+  // Um passe só. Antes eram 5 .filter() completos sobre state.rows, todo render,
+  // e o resultado era jogado fora por quem só precisa dos totais.
+  const counts = { all: state.rows.length, behind: 0, ready: 0, unmapped: 0, error: 0 };
+  for (const row of state.rows) {
+    if (row.behind === true) counts.behind += 1;
+    else if (row.behind === false) counts.ready += 1;
+    if (!row.mapped) counts.unmapped += 1;
+    if (row.error) counts.error += 1;
+  }
   $("nav-count").textContent = String(counts.all);
   $("c-all").textContent = String(counts.all);
   $("c-behind").textContent = String(counts.behind);
@@ -353,8 +356,98 @@ function restoreRepoFocus(focus) {
   if (target) target.focus({ preventScroll: true });
 }
 
+/**
+ * Rascunhos do formulário de mapeamento sobrevivem ao re-render.
+ *
+ * `render()` troca o innerHTML do <tbody> inteiro, o que destruía o <input> de URL
+ * junto com o que o usuário tinha digitado — e o foco ia para o <body>, de modo que
+ * o Tab recomeçava do topo. Qualquer evento dispava isso: digitar na busca (debounce
+ * de 150 ms), trocar filtro, setBusy, update. O beforeunload que existe para avisar
+ * "você tem texto não salvo" só cobre unload, não re-render — a proteção não cobria
+ * o caso real. Chaveado por row.name, não por índice: o índice é a posição em
+ * state.rows e muda quando a busca ou o filtro reordenam a tabela.
+ */
+function captureUrlDrafts() {
+  const drafts = new Map();
+  let focused = null;
+  dom.repoList.querySelectorAll("[data-url-input]").forEach((input) => {
+    const row = state.rows[Number(input.dataset.urlInput)];
+    if (!row) return;
+    if (input.value) drafts.set(row.name, input.value);
+    if (input === document.activeElement) {
+      focused = {
+        index: Number(input.dataset.urlInput),
+        start: input.selectionStart,
+        end: input.selectionEnd,
+      };
+    }
+  });
+  return { drafts, focused };
+}
+
+function restoreUrlDrafts(saved) {
+  if (!saved) return;
+  if (saved.drafts.size) {
+    dom.repoList.querySelectorAll("[data-url-input]").forEach((input) => {
+      const row = state.rows[Number(input.dataset.urlInput)];
+      if (!row) return;
+      const draft = saved.drafts.get(row.name);
+      if (draft !== undefined) input.value = draft;
+    });
+  }
+  if (!saved.focused) return;
+  const input = dom.repoList.querySelector(`[data-url-input="${saved.focused.index}"]`);
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  // `type="url"` suporta seleção; se o valor não bater, o navegador ajusta sozinho.
+  if (saved.focused.start !== null && input.setSelectionRange) {
+    try {
+      input.setSelectionRange(saved.focused.start, saved.focused.end);
+    } catch {
+      /* input sem seleção suportada: o foco já está restaurado */
+    }
+  }
+}
+
+/**
+ * Atualiza só o <tr> de uma linha, sem reconstruir o <tbody> inteiro.
+ *
+ * No modo em lote (`updateAll`) cada `doUpdate` chamava `render()` três vezes, e
+ * cada `render()` reescrevia as N linhas: 60 repositórios viravam ~180
+ * reconstruções completas do <tbody>, com a barra de rolagem da tabela pulando e
+ * o botão "Atualizar pendentes" perdendo e retomando o foco a cada passo.
+ *
+ * Só é usado no caminho `quiet`, em que todas as linhas do lote já estão
+ * mapeadas — portanto não há <tr class="map-row"> para remover, e o formulário de
+ * mapeamento das outras linhas fica intocado. Devolve false quando não dá para
+ * fazer de forma cirúrgica, e o chamador cai no render() completo.
+ */
+function renderRowInPlace(row, index) {
+  const current = dom.repoList.querySelector(`tr[data-row-index="${index}"]`);
+  if (!current || typeof current.replaceWith !== "function") return false;
+  const holder = document.createElement("tbody");
+  holder.innerHTML = renderRow(row, index);
+  const next = holder.firstElementChild;
+  if (!next) return false;
+  // a linha trocada leva junto os botões; se o foco estava nela, volta para ela
+  const hadFocus =
+    document.activeElement && current.contains && current.contains(document.activeElement);
+  current.replaceWith(next);
+  if (hadFocus) {
+    const same = next.querySelector(`[data-action][data-index="${index}"]`);
+    if (same) same.focus({ preventScroll: true });
+  }
+  return true;
+}
+
+/** render cirúrgico no caminho quiet, com queda para o render completo */
+function renderProgress(row, index) {
+  if (!renderRowInPlace(row, index)) render();
+}
+
 function render() {
   const focus = focusedRepoAction();
+  const drafts = captureUrlDrafts();
   const rows = visibleRows();
   const counts = countRows();
   const order = new Map();
@@ -383,6 +476,7 @@ function render() {
 
   dom.repoList.innerHTML = html;
   restoreRepoFocus(focus);
+  restoreUrlDrafts(drafts);
 
   dom.btnAll.disabled = state.busy || !state.base || counts.behind === 0;
 }
@@ -482,10 +576,27 @@ function clearPathError() {
   dom.pathInput.closest("[data-component=text-input-v2]").removeAttribute("data-invalid");
 }
 
+function announce(message) {
+  // Espelha em #live-status (região viva permanente, fora das <section hidden>).
+  // Limpar e reescrever no frame seguinte é o que faz o leitor de tela reanunciar
+  // quando a mesma mensagem se repete — sem isso, "Ação cancelada." duas vezes
+  // seguidas só falaria uma.
+  dom.liveStatus.textContent = "";
+  const text = String(message);
+  if (REDUCED_MOTION.matches) {
+    dom.liveStatus.textContent = text;
+  } else {
+    requestAnimationFrame(() => {
+      dom.liveStatus.textContent = text;
+    });
+  }
+}
+
 function say(message, tone = "info", showToast = false) {
   dom.status.dataset.tone = tone;
   dom.statusText.textContent = message;
   dom.statusIcon.setAttribute("href", `#i-${TONE_ICON[tone] || "check"}`);
+  announce(message);
   if (showToast) toast(message, tone);
 }
 
@@ -674,7 +785,7 @@ async function doScan(options = {}) {
     if (state.auto && mapped) await doCheck(true);
   } catch (error) {
     state.lastScanFailed = true;
-    // A falha não pode pisar no que o usuário já digitou depois desta tentativa.
+    // Não sobrescreve o que o usuário digitou após esta tentativa falhar.
     if (dom.pathInput.value.trim() === path) {
       dom.pathInput.value = state.base || "";
       storeSet("alldown.path", state.base || "");
@@ -731,9 +842,11 @@ async function doUpdate(name, quiet = false) {
   if (state.busy && !quiet) return false;
   const row = state.rows.find((item) => item.name === name);
   if (!row || !row.mapped || (!quiet && row.behind !== true)) return false;
+  const index = state.rows.indexOf(row);
+  const paint = () => (quiet ? renderProgress(row, index) : render());
   if (!quiet) setBusy(true);
   row.busy = true;
-  render();
+  paint();
   say(`Atualizando ${name}…`, "info");
   try {
     const result = await api("/api/update", {
@@ -747,7 +860,6 @@ async function doUpdate(name, quiet = false) {
     row.can_rollback = Boolean(result.backup);
     if (result.zip_only) row.zip_path = result.path;
     else row.local_dir = result.path;
-    render();
     const transfer = `${formatSize(result.download_bytes)} · ${formatSpeed(result.speed_bps)}`;
     const packageSize = `${formatSize(result.old_bytes)} → ${formatSize(result.new_bytes)}`;
     say(`${name} atualizado. ${transfer}. ${packageSize}.`, "success", true);
@@ -762,18 +874,18 @@ async function doUpdate(name, quiet = false) {
         row.local_sha = row.remote_sha;
         row.behind = false;
         row.error = null;
-        render();
+        paint();
         say(`${name} foi atualizado, mas a resposta se perdeu. O estado em disco confere.`, "success", true);
         return true;
       }
       if (verdict.known) {
         row.error = verdict.reason;
-        render();
+        paint();
         say(`Falha em ${name}: ${verdict.reason}`, "danger", true);
         return false;
       }
       row.error = error.message;
-      render();
+      paint();
       say(
         `${name}: deu tempo esgotado e não deu para confirmar o estado. Reexecute o check antes de tentar de novo.`,
         "warning",
@@ -785,8 +897,11 @@ async function doUpdate(name, quiet = false) {
     say(`Falha em ${name}: ${error.message}`, "danger", true);
     return false;
   } finally {
+    // O `finally` é quem faz o último paint: nos caminhos de sucesso e de erro
+    // removemos o render() do try/catch, que era seguido imediatamente por este
+    // aqui sem nada visível no meio — metade das reconstruções do <tbody>.
     row.busy = false;
-    render();
+    paint();
     if (!quiet) {
       setBusy(false);
       refreshLog();
@@ -1158,9 +1273,26 @@ dom.btnBackup.addEventListener("click", () => {
   });
 });
 
-dom.pathInput.addEventListener("input", () => {
-  clearPathError();
+function validatePathInput() {
+  // Valida no `input`, não no `blur`: no blur o foco já saiu do campo, então o
+  // erro aparecia exatamente no caso que o leitor de tela não consegue anunciar
+  // (WCAG 3.3.1 / 4.1.3). Aqui o foco ainda está no input.
   const value = dom.pathInput.value.trim();
+  if (!value || looksLikePath(value)) {
+    clearPathError();
+    return true;
+  }
+  setPathError("O caminho deve começar com / ou ~");
+  return false;
+}
+
+dom.pathInput.addEventListener("input", () => {
+  const valid = validatePathInput();
+  const value = dom.pathInput.value.trim();
+  if (!valid) {
+    say("Caminho inválido: deve começar com / ou ~", "warning", true);
+    return;
+  }
   if (!state.auto || !looksLikePath(value)) return;
   if (value === state.base && !state.lastScanFailed) return;
   window.clearTimeout(state.pathTimer);
@@ -1168,10 +1300,11 @@ dom.pathInput.addEventListener("input", () => {
 });
 
 dom.pathInput.addEventListener("blur", () => {
+  // Só cobre autofill do navegador, que não dispara `input`. Não anuncia de novo:
+  // se o erro já está visível, `role="alert"` já o comunicou.
   const value = dom.pathInput.value.trim();
-  if (!value || looksLikePath(value)) return;
+  if (!value || looksLikePath(value) || !dom.pathError.hidden) return;
   setPathError("O caminho deve começar com / ou ~");
-  say("Caminho inválido: deve começar com / ou ~", "warning", true);
 });
 
 dom.repoList.addEventListener("click", (event) => {

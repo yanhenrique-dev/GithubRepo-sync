@@ -34,7 +34,6 @@ function makeEl(tag = "div", id = "") {
     scrollTop: 0,
     scrollHeight: 0,
     clientHeight: 0,
-    firstElementChild: null,
     setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k] ?? null; },
     removeAttribute(k) { delete this.attrs[k]; },
@@ -46,12 +45,32 @@ function makeEl(tag = "div", id = "") {
     blur() {},
     click() {},
     scrollTo() {},
-    appendChild(c) { this.children.push(c); return c; },
-    remove() { this.children = this.children.filter((x) => x !== this); },
+    appendChild(c) {
+      this.children.push(c);
+      c.parentNode = this;
+      return c;
+    },
+    // remove() precisa desparentar: filtrar os proprios filhos nao muda nada no
+    // pai, e o prune de toasts (app.js) virava laco infinito.
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter((x) => x !== this);
+      this.parentNode = null;
+    },
+    contains(node) {
+      if (node === this) return true;
+      return this.children.some((c) => c === node || (c.contains && c.contains(node)));
+    },
     closest: () => null,
     querySelector: () => null,
     querySelectorAll: () => [],
   };
+  // firstElementChild precisa acompanhar children: o prune de toasts
+  // (app.js) faz `dom.toastRegion.firstElementChild.remove()` e crashava com null.
+  Object.defineProperty(el, "firstElementChild", {
+    get: () => el.children[0] ?? null,
+    configurable: true,
+  });
   return el;
 }
 
@@ -90,6 +109,54 @@ export function loadApp(opts = {}) {
   mainEl.scrollTo = () => {};
 
   const repoList = byId.get("repo-list");
+
+  /* O shim nao faz parse de HTML, entao `innerHTML = html` nao cria elements.
+     Para o que importa do render, modelamos o essencial: cada atribuicao a
+     innerHTML DESTRUI os inputs velhos e recria os que o html declara — que e
+     exatamente o bug do A5. O input recem-criado tem value="" e sem foco, como
+     no DOM real, e carrega o nome da linha no aria-label para o teste poder
+     conferir que o rascunho voltou para a linha certa. */
+  repoList.__inputs = [];
+  repoList.__renders = 0; // quantas vezes o <tbody> foi reconstruido por inteiro
+  let __html = "";
+  const makeUrlInput = (index, label) => ({
+    dataset: { urlInput: index },
+    label,
+    value: "",
+    selectionStart: null,
+    selectionEnd: null,
+    focused: 0,
+    focus() {
+      this.focused += 1;
+    },
+    setSelectionRange(a, b) {
+      this.selectionStart = a;
+      this.selectionEnd = b;
+    },
+  });
+  Object.defineProperty(repoList, "innerHTML", {
+    get: () => __html,
+    set(value) {
+      __html = String(value);
+      repoList.__renders += 1;
+      repoList.__inputs = [];
+      for (const m of __html.matchAll(
+        /<input[^>]*\bdata-url-input="(\d+)"[^>]*\baria-label="([^"]*)"/g
+      )) {
+        repoList.__inputs.push(makeUrlInput(m[1], m[2].replace(/^URL do GitHub para /, "")));
+      }
+    },
+    configurable: true,
+  });
+  repoList.querySelectorAll = (sel) => (sel === "[data-url-input]" ? repoList.__inputs : []);
+  repoList.querySelector = (sel) => {
+    const m = /^\[data-url-input="(\d+)"\]$/.exec(sel);
+    if (!m) return null;
+    return repoList.__inputs.find((el) => el.dataset.urlInput === m[1]) ?? null;
+  };
+  // os inputs do formulario moram "dentro" do <tbody> para efeitos de contains()
+  repoList.contains = (node) => repoList.__inputs.includes(node) || makeEl.prototype.contains.call(repoList, node);
+
   const timers = [];
   const matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
 
@@ -98,6 +165,7 @@ export function loadApp(opts = {}) {
     document: {
       documentElement: makeEl("html"),
       body: makeEl("body"),
+      activeElement: null,
       getElementById: (id) => byId.get(id) ?? null,
       querySelector: (sel) => {
         if (sel === ".mobile-scrim") return makeEl("button");
@@ -128,6 +196,10 @@ export function loadApp(opts = {}) {
     AbortController,
     setTimeout: (fn) => { timers.push(fn); return timers.length; },
     clearTimeout() {},
+    // rAF enfileira no mesmo bucket de timers: o announce() e o initScrollThumb()
+    // dependem dele, e setImmediate no settle() dá a chance de rodar.
+    requestAnimationFrame: (fn) => { timers.push(fn); return timers.length; },
+    cancelAnimationFrame() {},
     setInterval: () => 0,
     URLSearchParams,
     fetch: fetchImpl ?? (async (url) => {
@@ -139,7 +211,7 @@ export function loadApp(opts = {}) {
       }
       return { ok: true, status: 200, json: async () => ({ lines: [] }) };
     }),
-    window: { addEventListener() {}, setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {}, matchMedia },
+    window: { addEventListener() {}, setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {}, requestAnimationFrame: (fn) => { timers.push(fn); return timers.length; }, cancelAnimationFrame() {}, matchMedia },
   };
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
