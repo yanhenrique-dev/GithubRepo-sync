@@ -651,7 +651,14 @@ body {
 [data-component="switch"][data-checked] [data-slot="switch-control"] { background: var(--v2-background-bg-accent); box-shadow: var(--v2-elevation-switch-on); }
 [data-component="switch"][data-checked] [data-slot="switch-thumb"] { transform: translate(12px); }
 [data-component="switch"][data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-thumb"] { transform: translate(11px); }
-[data-component="switch"] [data-slot="switch-control"]:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 2.5px; }
+/* O alvo de foco é o <button>, não o <span data-slot="switch-control"> filho:
+   o span não é focalizável, então a regra antiga nunca casava :focus-visible e os
+   três switches ficavam sem indicador de foco (WCAG 2.4.7). */
+[data-component="switch"]:is(:focus-visible, [data-state="focus"]):not([data-disabled], [data-readonly]) {
+  outline: 2px solid var(--v2-border-border-focus);
+  outline-offset: 2.5px;
+  border-radius: var(--v2-radius-pill);
+}
 [data-component="switch"]:where([data-disabled]) { opacity: 0.5; cursor: not-allowed; }
 
 [data-component="switch"] [data-slot="switch-label"] {
@@ -1133,6 +1140,14 @@ body {
   scrollbar-width: none;
   outline: none;
   overscroll-behavior: contain;
+}
+/* O viewport é focalizável (permite rolar por teclado) — mas `outline: none`
+   acima o deixava sem indicador, e a scrollbar nativa está escondida: era a
+   única forma de percorrer a região, invisível para quem navega por teclado.
+   WCAG 2.4.7. */
+[data-component="scroll-view"] [data-slot="scroll-view-viewport"]:focus-visible {
+  outline: 2px solid var(--v2-border-border-focus);
+  outline-offset: -2px;
 }
 [data-component="scroll-view"] [data-slot="scroll-view-viewport"]::-webkit-scrollbar { display: none; }
 

@@ -46,7 +46,8 @@
   --v2-grey-300: #eee;
   --v2-grey-400: #dbdbdb;
   --v2-grey-500: #aeaeae;
-  --v2-grey-600: gray;
+  /* Hex explícito: `gray` é alias de `grey` e depende de resolução de keyword. */
+  --v2-grey-600: #808080;
   --v2-grey-700: #5c5c5c;
   --v2-grey-800: #3a3a3a;
   --v2-grey-900: #2e2e2e;
@@ -293,7 +294,7 @@
 
   --v2-text-text-base: var(--v2-grey-1100);
   --v2-text-text-muted: var(--v2-grey-700);
-  /* faint ajustado para #6b6b6b (era grey-600): contraste ≥4.5 em superfícies claras. */
+  /* faint: #6b6b6b em vez de grey-600 — contraste ≥4.5:1 em superfícies claras (axe). */
   --v2-text-text-faint: #6b6b6b;
   --v2-text-text-inverse: var(--v2-grey-50);
   --v2-text-text-contrast: var(--v2-grey-50);
@@ -312,7 +313,11 @@
   --v2-border-border-base: var(--v2-alpha-dark-10);
   --v2-border-border-strong: var(--v2-alpha-dark-20);
   --v2-border-border-inverse: var(--v2-grey-1000);
-  --v2-border-border-focus: var(--v2-blue-500);
+  /* focus: blue-700 em vez de blue-500 (2.73:1) — ≥3:1 em toda superfície clara
+     (6.27:1 em #fff, 6.01:1 em layer-01, 5.60:1 em layer-02). O anel é desenhado
+     com outline-offset, ou seja, fora do fill do elemento: o fundo relevante é o da
+     superfície, não o do botão contrast. */
+  --v2-border-border-focus: var(--v2-blue-700);
 
   --v2-overlay-simple-overlay-hover: var(--v2-alpha-dark-4);
   --v2-overlay-simple-overlay-pressed: var(--v2-alpha-dark-8);
@@ -324,10 +329,12 @@
   --v2-overlay-gradient-depth-bot: var(--v2-alpha-light-0);
 
   --v2-state-bg-success: var(--v2-green-100);
-  --v2-state-fg-success: var(--v2-green-800);
+  /* fg-success: green-900 em vez de green-800 (3.97:1) — contraste ≥4.5:1 no light.
+     A tag "Em dia" (11px) e a .status-line de sucesso (13px) usam este token. */
+  --v2-state-fg-success: var(--v2-green-900);
   --v2-state-border-success: var(--v2-green-300);
   --v2-state-bg-warning: var(--v2-yellow-100);
-  /* fg-warning ajustado para yellow-1100 (era yellow-800, 2.35:1 no bg): contraste ≥4.5. */
+  /* fg-warning: yellow-1100 em vez de yellow-800 (2.35:1) — contraste ≥4.5:1 no light. */
   --v2-state-fg-warning: var(--v2-yellow-1100);
   --v2-state-border-warning: var(--v2-yellow-300);
   --v2-state-bg-danger: var(--v2-red-100);
@@ -390,7 +397,7 @@
 
   --v2-text-text-base: var(--v2-grey-100);
   --v2-text-text-muted: var(--v2-grey-500);
-  /* faint ajustado para #999 (era grey-600): contraste ≥4.5 em layer-01 no dark. */
+  /* faint: #999 em vez de grey-600 — contraste ≥4.5:1 em layer-01 no dark. */
   --v2-text-text-faint: #999999;
   --v2-text-text-inverse: var(--v2-grey-1100);
   --v2-text-text-contrast: var(--v2-grey-50);
@@ -409,7 +416,8 @@
   --v2-border-border-base: var(--v2-alpha-light-10);
   --v2-border-border-strong: var(--v2-alpha-light-20);
   --v2-border-border-inverse: var(--v2-grey-100);
-  --v2-border-border-focus: var(--v2-blue-500);
+  /* focus no dark: blue-300 — 12.20:1 em #161616, 10.46:1 em #242424. */
+  --v2-border-border-focus: var(--v2-blue-300);
 
   --v2-overlay-simple-overlay-hover: var(--v2-alpha-light-6);
   --v2-overlay-simple-overlay-pressed: var(--v2-alpha-light-10);
