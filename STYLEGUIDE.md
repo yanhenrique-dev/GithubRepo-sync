@@ -11,13 +11,16 @@ Nenhum valor foi inventado. Se não está no CSS-fonte, não está aqui.
 | Arquivo | Conteúdo |
 |---|---|
 | `static/tokens.css` | Rampas, alfa, cores de estado, semânticos light/dark, elevação, raios, tipografia, movimento |
-| `static/components.css` | Primitives com `data-component` / `data-slot` |
+| `static/components.css` | Primitives em uso no caminho crítico (`button`, `input`, `switch`, `tag`, `segmented`, `avatar`, `card`, `toast`, `data-table`, `scroll-view`, …) |
+| `static/components-optional.css` | Primitives fora do caminho crítico (`textarea`, `select`, `checkbox`, `tooltip`, `drawer`, `dialog`, `menu`) — **não** carregado por padrão, ~7KB gzip poupados |
 | `static/shell.css` | Grid do app, sidebar, header, page shell, as três telas |
 | `static/theme.js` | Aplica o tema antes da primeira pintura (bloqueante, por causa da CSP) |
 | `static/index.html` | Markup das três telas e a ordem de carga |
 | `STYLEGUIDE.md` | Este documento |
 
 Ordem de carga no HTML: `theme.js` → `tokens.css` → `components.css` → `shell.css`.
+Versão única `?v=3` nos quatro assets + `theme.js` (antes `?v=1`/`?v=2`/sem versão,
+sempre inconsistente). `Cache-Control: immutable` no servidor para `?v=`.
 
 ## Convenção de atributos
 
@@ -151,24 +154,24 @@ neste sistema. Monospace: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas
 | `button-v2` | `small` 24 · `normal` 28 · `large` 32 | `neutral` `contrast` `outline` `ghost` `ghost-muted` `danger` `warning` `loading` |
 | `icon-button-v2` | `small` 20 · `normal` 24 · `large` 28 | `neutral` `contrast` `ghost` `ghost-muted` |
 | `text-input-v2` | 28 (32 `large`) | — + `data-invalid` `data-disabled` `data-numeric` `data-leading-icon` |
-| `textarea-v2` | `min-height: 80px`, `resize: vertical` | idem |
-| `select-v2` | 28 | idem |
-| `checkbox-v2` | `16×16`, raio `4px` | `data-checked` `data-invalid` `data-disabled` |
+| `textarea-v2` | `min-height: 80px`, `resize: vertical` | idem | **opcional** |
+| `select-v2` | 28 | idem | **opcional** |
+| `checkbox-v2` | `16×16`, raio `4px` | `data-checked` `data-invalid` `data-disabled` | **opcional** |
 | `switch` | `data-console-toggle-size="md"` → 32×20, thumb 16 | `data-checked` |
 | `tag` | `16px`, raio `2px` | `accent` `success` `warning` `danger` `info` `mono` + `data-high-contrast` |
 | `segmented-control-v2` | 28, `box-shadow: 0 0 0 .5px` | `data-pressed` no item |
 | `avatar-v2` | 16 / 20 / 24 / 28 | `data-tone` = 10 cores + `data-kind="org"` |
-| `tooltip-v2` | `5px 6px`, raio `4px`, 11/12 | — |
+| `tooltip-v2` | `5px 6px`, raio `4px`, 11/12 | — | **opcional** |
 | `toast-v2` | 320px, raio `8px`, grid `1fr 20px` | `data-tone` |
-| `drawer` | `min(100vw, 40rem)` | `data-closed` no painel |
-| `dialog-v2` | 480 (`large` 640), raio `12px` | `data-size` |
+| `drawer` | `min(100vw, 40rem)` | `data-closed` no painel | **opcional** |
+| `dialog-v2` | 480 (`large` 640), raio `12px` | `data-size` | **opcional** |
 | `data-table` | header 32 · row 40 | `data-align="end"` + `tabular-nums` |
 | `card` | padding 16 (`large` 20) | `data-interactive` |
 | `scroll-view` | thumb 4px, trilho 12px | `data-visible` |
 | `progress-bar` | 4px | `data-variant` `data-state="indeterminate"` |
 | `empty-state` / `skeleton` | — | `data-shape` no skeleton |
 | `divider-v2` | `1px` com `scaleY(.5)` | `data-orientation` |
-| `menu-v2-content` / `menu-v2-item` | item 28, raio `4px` | `data-checked` `data-highlighted` |
+| `menu-v2-content` / `menu-v2-item` | item 28, raio `4px` | `data-checked` `data-highlighted` | **opcional** |
 | `field-v2` / `inline-input-v2` / `loader-v2` | — | — |
 
 ## Movimento
@@ -246,6 +249,7 @@ Toda outra superfície de cor e tamanho deve continuar vindo de token.
 
 ```bash
 node --check static/app.js        # sintaxe
+node --test tests/js/*.test.mjs   # 38 testes do frontend
 .venv/bin/python -m pytest tests/ -q
 uvx --from ruff==0.16.8 ruff check app.py core tray.py
 ```

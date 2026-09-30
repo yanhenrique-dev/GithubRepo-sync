@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -99,6 +100,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="RepoRefresh", lifespan=lifespan)
+# M11: /static puro transfere ~100KB de CSS + 47KB de JS sem compressão.
+# GZip reduz o cold load para ~15KB sem tocar em rota ou contrato.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -154,10 +158,24 @@ async def local_only(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    # M12: blindagem sem unsafe-inline (theme.js é arquivo separado por isso).
+    # object-src/base-uri/frame-ancestors fecham injeção de plugin, <base> e
+    # embed; form-action trava o <form action="#"> da Biblioteca.
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "default-src 'self'; object-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; form-action 'self'; "
+        "script-src 'self'; style-src 'self'; "
         "img-src 'self' data:; font-src 'self'; connect-src 'self'"
     )
+    # Assets versionados (?v=) são imutáveis; o resto do /static revalida em 1h.
+    # StaticFiles já trata etag/304 — isto só corta o cold load repetido.
+    if request.url.path.startswith("/static/"):
+        query = request.url.query or ""
+        if "v=" in query:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif "Cache-Control" not in response.headers:
+            response.headers["Cache-Control"] = "public, max-age=3600"
     return response
 
 

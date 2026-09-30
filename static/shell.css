@@ -274,10 +274,13 @@
 
 .page-header__actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 
-/* Etapas da operação — 3 passos, densidade alta */
+/* Etapas da operação — 3 passos, densidade alta. data-done reflete o progresso
+   real (pintado por paintSteps()): Localizar acende com pasta, Comparar com
+   check concluído, Trocar quando nada está pendente. */
 .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .step { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: var(--v2-radius-surface); background: var(--v2-background-bg-layer-01); box-shadow: var(--v2-elevation-raised); }
 .step__index { color: var(--v2-text-text-faint); font-family: var(--v2-font-family-mono); font-size: var(--v2-text-micro-size); line-height: 1; letter-spacing: 0; }
+.step[data-done="true"] .step__index { color: var(--v2-state-fg-success); }
 .step__title { font-size: var(--v2-text-label-size); font-weight: var(--v2-weight-medium); line-height: var(--v2-text-label-line); letter-spacing: var(--v2-text-label-tracking); }
 .step__body { color: var(--v2-text-text-muted); font-size: var(--v2-text-micro-size); line-height: 1; letter-spacing: var(--v2-text-micro-tracking); }
 
@@ -355,10 +358,18 @@
   gap: 2px;
   min-height: 88px;
   padding: 12px 16px;
+  border: 0;
   border-radius: var(--v2-radius-surface);
   background: var(--v2-background-bg-layer-01);
   box-shadow: var(--v2-elevation-raised);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: box-shadow var(--v2-motion-control), transform var(--v2-motion-control);
 }
+.stat-card:hover { box-shadow: var(--v2-elevation-floating); }
+.stat-card:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 2.5px; }
+.stat-card[data-active="true"] { box-shadow: var(--v2-elevation-floating), 0 0 0 1px var(--v2-border-border-strong); }
 .stat-card__label { display: flex; align-items: center; gap: 6px; color: var(--v2-text-text-muted); font-size: var(--v2-text-label-size); font-weight: var(--v2-weight-medium); line-height: var(--v2-text-label-line); letter-spacing: var(--v2-text-label-tracking); }
 .stat-card__value { color: var(--v2-text-text-base); font-size: var(--v2-text-stat-size); font-weight: var(--v2-weight-emphasis); line-height: var(--v2-text-stat-line); letter-spacing: var(--v2-text-stat-spacing); font-variant-numeric: tabular-nums; }
 .stat-card__hint { color: var(--v2-text-text-faint); font-size: var(--v2-text-micro-size); line-height: 1; letter-spacing: var(--v2-text-micro-tracking); }
@@ -504,4 +515,8 @@
   .topbar,
   .sidebar,
   .setting-row { box-shadow: none; border-color: CanvasText; }
+  /* I3: o Windows HC descarta outline não-mapeado — sem isto o foco some. */
+  *:focus-visible { outline-color: Highlight; }
+  .status-dot { forced-color-adjust: none; }
+  .stat-card[data-active="true"] { outline: 2px solid Highlight; }
 }

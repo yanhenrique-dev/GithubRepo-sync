@@ -70,11 +70,12 @@ const state = {
 };
 
 const FILTER_INFO = {
-  all: { label: "Todos", test: () => true },
-  behind: { label: "Atualizar", test: (row) => row.behind === true },
-  ready: { label: "Em dia", test: (row) => row.behind === false },
-  unmapped: { label: "Sem dono", test: (row) => !row.mapped },
-  error: { label: "Erros", test: (row) => Boolean(row.error) },
+  // B4: sem `label` — o texto do filtro vive no HTML (index.html), fonte única.
+  all: { test: () => true },
+  behind: { test: (row) => row.behind === true },
+  ready: { test: (row) => row.behind === false },
+  unmapped: { test: (row) => !row.mapped },
+  error: { test: (row) => Boolean(row.error) },
 };
 
 const VIEWS = ["library", "activity", "settings"];
@@ -244,19 +245,19 @@ function renderMapForm(row, index) {
       ? `<span class="repo-note">${icon("search", "small")} ${esc(row.tried.join(" · "))}</span>`
       : "";
   return `<tr class="map-row" data-map-index="${index}"><td colspan="7">
-      <div class="map-form">
+      <form class="map-form" data-map-form="${index}">
         <label class="text-input-v2" data-component="text-input-v2" for="url-${index}">
           <span data-slot="text-input-v2-value">
             <input id="url-${index}" data-url-input="${index}" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://github.com/dono/repo…" aria-label="URL do GitHub para ${esc(row.name)}" data-slot="text-input-v2-input">
           </span>
         </label>
-        <button class="button-v2" data-component="button-v2" data-variant="contrast" data-size="normal" type="button" data-action="save-map" data-index="${index}" data-icon>
+        <button class="button-v2" data-component="button-v2" data-variant="contrast" data-size="normal" type="submit" data-action="save-map" data-index="${index}" data-icon>
           ${icon("check")}<span>Salvar</span>
         </button>
         <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="normal" type="button" data-action="suggest" data-index="${index}" data-icon>
           ${icon("spark")}<span>Sugerir</span>
         </button>
-      </div>
+      </form>
       ${tried ? `<div class="map-suggestions">${tried}</div>` : ""}
       ${suggestions}
     </td></tr>`;
@@ -449,6 +450,30 @@ function renderProgress(row, index) {
 }
 
 function render() {
+  // I5: error boundary — um row com formato inesperado do servidor derrubava
+  // a app inteira sem feedback. Agora a falha vira mensagem, não tela morta.
+  try {
+    renderUnsafe();
+  } catch (error) {
+    say(`Falha ao desenhar a lista: ${error.message}`, "danger", true);
+  }
+}
+
+function paintSteps(counts) {
+  // As 3 etapas do topo refletem o progresso real, não são decorativas.
+  const locate = $("step-locate");
+  const compare = $("step-compare");
+  const swap = $("step-swap");
+  if (locate) locate.dataset.done = state.base ? "true" : "false";
+  const checked = state.rows.some((row) => row.behind !== undefined && row.behind !== null || row.error);
+  if (compare) compare.dataset.done = checked ? "true" : "false";
+  if (swap) swap.dataset.done = state.base && counts.behind === 0 && counts.all > 0 ? "true" : "false";
+  document.querySelectorAll("[data-filter-link]").forEach((card) => {
+    card.dataset.active = card.dataset.filterLink === state.filter ? "true" : "false";
+  });
+}
+
+function renderUnsafe() {
   const focus = focusedRepoAction();
   const drafts = captureUrlDrafts();
   const rows = visibleRows();
@@ -468,6 +493,7 @@ function render() {
     button.setAttribute("aria-checked", active ? "true" : "false");
   });
   syncFilterTabIndex();
+  paintSteps(counts);
 
   let html;
   if (state.busy && !state.rows.length && state.scanning) {
@@ -770,6 +796,7 @@ async function doScan(options = {}) {
     return;
   }
   if (state.busy && options.allowBusy !== true) return;
+  cancelPendingScan();
   state.scanning = true;
   state.confirmRollback = null;
   state.confirmUpdate = null;
@@ -1105,8 +1132,13 @@ function closeSidebar(options = {}) {
 }
 
 function focusScan() {
+  // B12: sem setTimeout(40) frágil — o foco acontece no próximo frame,
+  // depois que setView tirou o hidden da Biblioteca.
   setView("library");
-  window.setTimeout(() => dom.pathInput.focus(), 40);
+  cancelPendingScan();
+  const focus = () => dom.pathInput.focus({ preventScroll: false });
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(focus);
+  else focus();
 }
 
 /* ------------------------------------------------------------ scroll thumb */
@@ -1152,69 +1184,102 @@ function initScrollThumb() {
 /* ------------------------------------------------------------------ ações */
 const BUSY_ACTIONS = new Set(["check-row", "update-row", "rollback-row", "save-map", "suggest", "pick-suggestion", "refresh", "refresh-log"]);
 
+// B10: o timer de auto-scan (700ms) ficava pendente quando outro gatilho
+// disparava o scan (submit, atalho E, switch auto) — dois scans em sequência.
+function cancelPendingScan() {
+  if (state.pathTimer) {
+    window.clearTimeout(state.pathTimer);
+    state.pathTimer = null;
+  }
+}
+
+function resetFilterAndQuery() {
+  state.filter = "all";
+  state.query = "";
+  storeSet("alldown.filter", "all");
+  storeSet("alldown.query", "");
+  render();
+  writeHashState();
+}
+
+function refreshOrFocus() {
+  if (state.base) doCheck();
+  else focusScan();
+}
+
+function confirmUpdateRow(index) {
+  const row = state.rows[index];
+  if (row?.behind === true) {
+    if (state.confirmUpdate !== row.name) {
+      state.confirmUpdate = row.name;
+      state.confirmRollback = null;
+      render();
+      say(`Confirme a atualização de ${row.name}: clique no botão de novo.`, "warning", true);
+      return;
+    }
+    state.confirmUpdate = null;
+    doUpdate(row.name);
+  } else {
+    doCheck();
+  }
+}
+
+function confirmRollbackRow(index) {
+  const name = state.rows[index]?.name;
+  if (!name) return;
+  if (state.confirmRollback !== name) {
+    state.confirmRollback = name;
+    state.confirmUpdate = null;
+    render();
+    say(`Confirme a reversão de ${name}: clique no botão de novo.`, "warning", true);
+    return;
+  }
+  state.confirmRollback = null;
+  doRollback(name);
+}
+
+function saveMapFrom(index) {
+  const input = dom.repoList.querySelector(`[data-url-input="${index}"]`);
+  mapRepo(index, input?.value);
+}
+
+function pickSuggestion(index, element) {
+  const suggestion = state.rows[index]?.suggestions?.[Number(element.dataset.suggestion)];
+  if (suggestion) mapRepo(index, suggestion.url);
+}
+
+// B7: tabela em vez de cadeia de ifs — adicionar ação = adicionar entrada,
+// sem tocar no meio do despachante. Ações desconhecidas são ignoradas.
+const ACTIONS = {
+  "toggle-sidebar": () => toggleSidebar(),
+  "close-sidebar": () => closeSidebar(),
+  "toggle-theme": () => applyTheme(state.theme === "dark" ? "light" : "dark"),
+  "focus-scan": () => focusScan(),
+  "refresh-token": () => refreshToken(),
+  "refresh-log": () => refreshLog(),
+  "reset-filter": () => resetFilterAndQuery(),
+  "refresh": () => refreshOrFocus(),
+  "check-row": () => refreshOrFocus(),
+  "update-row": (index) => confirmUpdateRow(index),
+  "rollback-row": (index) => confirmRollbackRow(index),
+  "save-map": (index) => saveMapFrom(index),
+  "suggest": (index) => suggestRepo(index),
+  "pick-suggestion": (index, element) => pickSuggestion(index, element),
+};
+
 function handleAction(action, element) {
+  const handler = ACTIONS[action];
+  if (!handler) return;
   const index = Number(element.dataset.index);
   if (state.busy && BUSY_ACTIONS.has(action)) return;
   if (action !== "update-row" && state.confirmUpdate) {
     state.confirmUpdate = null;
     render();
   }
-
-  if (action === "toggle-sidebar") toggleSidebar();
-  if (action === "close-sidebar") closeSidebar();
-  if (action === "toggle-theme") applyTheme(state.theme === "dark" ? "light" : "dark");
-  if (action === "focus-scan") focusScan();
-  if (action === "refresh-token") refreshToken();
-  if (action === "refresh-log") refreshLog();
-  if (action === "reset-filter") {
-    state.filter = "all";
-    state.query = "";
-    storeSet("alldown.filter", "all");
-    storeSet("alldown.query", "");
-    render();
-    writeHashState();
-  }
-  if (action === "refresh" || action === "check-row") {
-    if (state.base) doCheck();
-    else focusScan();
-  }
-  if (action === "update-row") {
-    const row = state.rows[index];
-    if (row?.behind === true) {
-      if (state.confirmUpdate !== row.name) {
-        state.confirmUpdate = row.name;
-        state.confirmRollback = null;
-        render();
-        say(`Confirme a atualização de ${row.name}: clique no botão de novo.`, "warning", true);
-        return;
-      }
-      state.confirmUpdate = null;
-      doUpdate(row.name);
-    } else {
-      doCheck();
-    }
-  }
-  if (action === "rollback-row") {
-    const name = state.rows[index]?.name;
-    if (!name) return;
-    if (state.confirmRollback !== name) {
-      state.confirmRollback = name;
-      state.confirmUpdate = null;
-      render();
-      say(`Confirme a reversão de ${name}: clique no botão de novo.`, "warning", true);
-      return;
-    }
-    state.confirmRollback = null;
-    doRollback(name);
-  }
-  if (action === "save-map") {
-    const input = dom.repoList.querySelector(`[data-url-input="${index}"]`);
-    mapRepo(index, input?.value);
-  }
-  if (action === "suggest") suggestRepo(index);
-  if (action === "pick-suggestion") {
-    const suggestion = state.rows[index]?.suggestions?.[Number(element.dataset.suggestion)];
-    if (suggestion) mapRepo(index, suggestion.url);
+  try {
+    handler(index, element);
+  } catch (error) {
+    say(`Falha na ação: ${error.message}`, "danger", true);
   }
 }
 
@@ -1238,6 +1303,7 @@ function init() {
   setBusy(false);
   setView(state.view);
   syncSidebarAccessibility();
+  registerEvents();
   initScrollThumb();
   refreshToken();
   refreshLog();
@@ -1255,27 +1321,6 @@ function init() {
   if (state.auto && looksLikePath(dom.pathInput.value.trim())) window.setTimeout(doScan, 120);
 }
 
-$("form-path").addEventListener("submit", (event) => {
-  event.preventDefault();
-  window.clearTimeout(state.pathTimer);
-  doScan();
-});
-
-let searchTimer = null;
-dom.search.addEventListener("input", (event) => {
-  state.query = event.target.value;
-  window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(() => {
-    storeSet("alldown.query", state.query);
-    render();
-    writeHashState();
-  }, 150);
-});
-
-dom.filters.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-filter]");
-  if (button) setFilter(button.dataset.filter);
-});
 
 /* Roving tabindex: o APG exige UM tab stop no radiogroup, não cinco. Só o filtro
    marcado é tabbável; as setas movem foco e seleção, como manda o padrão. */
@@ -1285,64 +1330,6 @@ function syncFilterTabIndex() {
     button.setAttribute("tabindex", checked ? "0" : "-1");
   });
 }
-
-dom.filters.addEventListener("keydown", (event) => {
-  const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
-  if (!keys.includes(event.key)) return;
-  const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
-  const current = buttons.indexOf(document.activeElement);
-  if (current === -1) return;
-  event.preventDefault();
-  let next;
-  if (event.key === "Home") next = 0;
-  else if (event.key === "End") next = buttons.length - 1;
-  else next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
-  buttons[next].focus();
-  setFilter(buttons[next].dataset.filter);
-});
-
-dom.btnCheck.addEventListener("click", () => doCheck());
-dom.btnAll.addEventListener("click", updateAll);
-
-dom.btnAuto.addEventListener("click", () => {
-  state.auto = !state.auto;
-  storeSet("alldown.auto", state.auto ? "1" : "0");
-  paintSwitches();
-  say(state.auto ? "Detecção automática ativada." : "Detecção automática pausada.", "info", true);
-  const value = dom.pathInput.value.trim();
-  if (state.auto && looksLikePath(value) && value !== state.base) doScan();
-});
-
-dom.btnMode.addEventListener("click", () => {
-  const next = !state.zipOnly;
-  postFlag("/api/mode", { zip_only: next }, (result) => {
-    state.zipOnly = Boolean(result.zip_only);
-    say(state.zipOnly ? "Modo somente ZIP ativado." : "Modo pasta ativado.", "success", true);
-  });
-});
-
-dom.btnBackup.addEventListener("click", () => {
-  const next = !state.backup;
-  postFlag("/api/backup", { backup: next }, (result) => {
-    state.backup = Boolean(result.backup);
-    say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
-  });
-});
-
-// Preferência só do cliente: não vai ao servidor (WCAG 2.1.4 exige forma de
-// desativar atalho de tecla única).
-dom.btnShortcuts.addEventListener("click", () => {
-  state.shortcuts = !state.shortcuts;
-  storeSet("alldown.shortcuts", state.shortcuts ? "1" : "0");
-  paintSwitches();
-  say(
-    state.shortcuts
-      ? "Atalhos de teclado ligados: E escaneia, C checa."
-      : "Atalhos de teclado desligados.",
-    "info",
-    true
-  );
-});
 
 function validatePathInput() {
   // Valida no `input`, não no `blur`: no blur o foco já saiu do campo, então o
@@ -1357,90 +1344,186 @@ function validatePathInput() {
   return false;
 }
 
-dom.pathInput.addEventListener("input", () => {
-  const valid = validatePathInput();
-  const value = dom.pathInput.value.trim();
-  if (!valid) {
-    say("Caminho inválido: deve começar com / ou ~", "warning", true);
-    return;
-  }
-  if (!state.auto || !looksLikePath(value)) return;
-  if (value === state.base && !state.lastScanFailed) return;
-  window.clearTimeout(state.pathTimer);
-  state.pathTimer = window.setTimeout(doScan, 700);
-});
+/* B5: todos os listeners nascem em registerEvents(), não espalhados no topo
+   do módulo. Antes metade era registrada fora de init() — inicialização
+   partida em dois lugares. */
+let searchTimer = null;
 
-dom.pathInput.addEventListener("blur", () => {
-  // Só cobre autofill do navegador, que não dispara `input`. Não anuncia de novo:
-  // se o erro já está visível, `role="alert"` já o comunicou.
-  const value = dom.pathInput.value.trim();
-  if (!value || looksLikePath(value) || !dom.pathError.hidden) return;
-  setPathError("O caminho deve começar com / ou ~");
-});
-
-dom.repoList.addEventListener("click", (event) => {
-  const element = event.target.closest("[data-action]");
-  if (!element) return;
-  event.stopPropagation();
-  handleAction(element.dataset.action, element);
-});
-
-document.addEventListener("click", (event) => {
-  const viewButton = event.target.closest("[data-view]");
-  if (viewButton) {
-    setView(viewButton.dataset.view);
-    return;
-  }
-  const actionButton = event.target.closest("[data-action]");
-  if (actionButton && !dom.repoList.contains(actionButton)) handleAction(actionButton.dataset.action, actionButton);
-});
-
-window.addEventListener("resize", syncSidebarAccessibility);
-window.addEventListener("hashchange", applyHashState);
-
-document.querySelector(".skip-link")?.addEventListener("click", (event) => {
-  event.preventDefault();
-  const viewport = dom.main.querySelector("[data-slot=scroll-view-viewport]");
-  viewport?.scrollTo({ top: 0 });
-  dom.main.focus({ preventScroll: true });
-});
-window.addEventListener("beforeunload", (event) => {
-  const dirty = Array.from(dom.repoList.querySelectorAll("[data-url-input]")).some(
-    (input) => String(input.value || "").trim() !== ""
-  );
-  if (dirty) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    if (state.confirmRollback || state.confirmUpdate) {
-      state.confirmRollback = null;
-      state.confirmUpdate = null;
-      render();
-      say("Ação cancelada.", "info");
-    }
-    closeSidebar();
-    return;
-  }
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (event.shiftKey) return;
-  if (!state.shortcuts) return;
-  if (event.repeat) return; // segurar a tecla nao deve repetir a operacao
-  const tag = event.target?.tagName || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  if (event.target?.isContentEditable) return;
-  const key = event.key.toLowerCase();
-  if (key === "e") {
+function registerEvents() {
+  $("form-path").addEventListener("submit", (event) => {
     event.preventDefault();
     doScan();
-  }
-  if (key === "c") {
+  });
+
+  dom.search.addEventListener("input", (event) => {
+    state.query = event.target.value;
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      storeSet("alldown.query", state.query);
+      render();
+      writeHashState();
+    }, 150);
+  });
+
+  dom.filters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-filter]");
+    if (button) setFilter(button.dataset.filter);
+  });
+
+  dom.filters.addEventListener("keydown", (event) => {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
+    const current = buttons.indexOf(document.activeElement);
+    if (current === -1) return;
     event.preventDefault();
-    doCheck();
-  }
-});
+    let next;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = buttons.length - 1;
+    else next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next].focus();
+    setFilter(buttons[next].dataset.filter);
+  });
+
+  dom.btnCheck.addEventListener("click", () => doCheck());
+  dom.btnAll.addEventListener("click", updateAll);
+
+  dom.btnAuto.addEventListener("click", () => {
+    state.auto = !state.auto;
+    storeSet("alldown.auto", state.auto ? "1" : "0");
+    paintSwitches();
+    say(state.auto ? "Detecção automática ativada." : "Detecção automática pausada.", "info", true);
+    const value = dom.pathInput.value.trim();
+    if (state.auto && looksLikePath(value) && value !== state.base) doScan();
+  });
+
+  dom.btnMode.addEventListener("click", () => {
+    const next = !state.zipOnly;
+    postFlag("/api/mode", { zip_only: next }, (result) => {
+      state.zipOnly = Boolean(result.zip_only);
+      say(state.zipOnly ? "Modo somente ZIP ativado." : "Modo pasta ativado.", "success", true);
+    });
+  });
+
+  dom.btnBackup.addEventListener("click", () => {
+    const next = !state.backup;
+    postFlag("/api/backup", { backup: next }, (result) => {
+      state.backup = Boolean(result.backup);
+      say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
+    });
+  });
+
+  // Preferência só do cliente: não vai ao servidor (WCAG 2.1.4 exige forma de
+  // desativar atalho de tecla única).
+  dom.btnShortcuts.addEventListener("click", () => {
+    state.shortcuts = !state.shortcuts;
+    storeSet("alldown.shortcuts", state.shortcuts ? "1" : "0");
+    paintSwitches();
+    say(
+      state.shortcuts
+        ? "Atalhos de teclado ligados: E escaneia, C checa."
+        : "Atalhos de teclado desligados.",
+      "info",
+      true
+    );
+  });
+
+  dom.pathInput.addEventListener("input", () => {
+    const valid = validatePathInput();
+    const value = dom.pathInput.value.trim();
+    if (!valid) {
+      say("Caminho inválido: deve começar com / ou ~", "warning", true);
+      return;
+    }
+    if (!state.auto || !looksLikePath(value)) return;
+    if (value === state.base && !state.lastScanFailed) return;
+    window.clearTimeout(state.pathTimer);
+    state.pathTimer = window.setTimeout(doScan, 700);
+  });
+
+  dom.pathInput.addEventListener("blur", () => {
+    // Só cobre autofill do navegador, que não dispara `input`. Não anuncia de novo:
+    // se o erro já está visível, `role="alert"` já o comunicou.
+    const value = dom.pathInput.value.trim();
+    if (!value || looksLikePath(value) || !dom.pathError.hidden) return;
+    setPathError("O caminho deve começar com / ou ~");
+  });
+
+  // B8/B9: um único despachante de clique. Antes havia stopPropagation no
+  // repoList + contains() no global — redundância que mascarava bugs — e o
+  // listener global fazia 2× closest() em todo clique da página. Agora: guarda
+  // barata por alvo, um closest() para view/action/filter-link.
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const target = event.target.closest("[data-view],[data-action],[data-filter-link]");
+    if (!target) return;
+    if (target.dataset.view) {
+      setView(target.dataset.view);
+      return;
+    }
+    if (target.dataset.filterLink) {
+      setFilter(target.dataset.filterLink);
+      return;
+    }
+    if (target.dataset.action) handleAction(target.dataset.action, target);
+  });
+
+  // Enter no formulário de mapeamento salva (antes só o clique em Salvar).
+  // O submit é delegado: as linhas são recriadas a cada render.
+  dom.repoList.addEventListener("submit", (event) => {
+    const form = event.target.closest?.("[data-map-form]");
+    if (!form || !dom.repoList.contains(form)) return;
+    event.preventDefault();
+    saveMapFrom(Number(form.dataset.mapForm));
+  });
+
+  window.addEventListener("resize", syncSidebarAccessibility);
+  window.addEventListener("hashchange", applyHashState);
+
+  document.querySelector(".skip-link")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const viewport = dom.main.querySelector("[data-slot=scroll-view-viewport]");
+    viewport?.scrollTo({ top: 0 });
+    dom.main.focus({ preventScroll: true });
+  });
+  window.addEventListener("beforeunload", (event) => {
+    const dirty = Array.from(dom.repoList.querySelectorAll("[data-url-input]")).some(
+      (input) => String(input.value || "").trim() !== ""
+    );
+    if (dirty) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (state.confirmRollback || state.confirmUpdate) {
+        state.confirmRollback = null;
+        state.confirmUpdate = null;
+        render();
+        say("Ação cancelada.", "info");
+      }
+      closeSidebar();
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.shiftKey) return;
+    if (!state.shortcuts) return;
+    if (event.repeat) return; // segurar a tecla nao deve repetir a operacao
+    const tag = event.target?.tagName || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (event.target?.isContentEditable) return;
+    const key = event.key.toLowerCase();
+    if (key === "e") {
+      event.preventDefault();
+      doScan();
+    }
+    if (key === "c") {
+      event.preventDefault();
+      doCheck();
+    }
+  });
+}
 
 init();

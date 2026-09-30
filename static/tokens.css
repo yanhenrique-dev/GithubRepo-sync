@@ -368,19 +368,8 @@
   --v2-avatar-border-pink: #c83d8b;
   --v2-avatar-bg-purple: #623be2;
   --v2-avatar-border-purple: #5230c2;
-
-  --v2-elevation-raised: 0px 2px 4px 0px var(--v2-alpha-dark-4), 0px 1px 2px -1px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-floating: 0px 8px 16px 0px var(--v2-alpha-dark-4), 0px 4px 8px 0px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-overlay: 0px 16px 32px 0px var(--v2-alpha-dark-4), 0px 8px 16px 0px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-button-neutral: 0px 1px 1.5px 0px var(--v2-alpha-dark-10), 0px 0px 0px 0.5px var(--v2-alpha-dark-14);
-  --v2-elevation-button-contrast: 0px 1px 1.5px 0px var(--v2-alpha-dark-20), 0px 0px 0px 0.5px var(--v2-grey-800), inset 0px 1px 2px 0px var(--v2-alpha-light-14), inset 0px -1px 2px 0px var(--v2-alpha-dark-6);
-  --v2-elevation-elements: 0px 0.5px 0.5px 0px var(--v2-alpha-dark-40);
-  --v2-elevation-switch-off: inset 0px 1px 1px 0px var(--v2-alpha-dark-8), inset 0px 0.5px 0.5px 0px var(--v2-alpha-dark-8), inset 0px 0px 0px 0.5px var(--v2-alpha-dark-10);
-  --v2-elevation-switch-on: inset 0px 2px 2px 0px var(--v2-alpha-dark-10), inset 0px 1px 1px 0px var(--v2-alpha-dark-10), inset 0px 0px 0px 0.5px var(--v2-alpha-dark-20);
-
-  --v2-illustration-layer-01: var(--v2-grey-300);
-  --v2-illustration-layer-02: var(--v2-grey-400);
-  --v2-illustration-layer-03: var(--v2-grey-500);
+  /* B3: elevation/illustration do light são idênticos ao :root (linhas 202-214)
+     — herança já resolve, 12 linhas duplicadas removidas. */
 }
 
 /* --------------------------------------------------------------------------

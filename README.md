@@ -93,7 +93,8 @@ Abra **http://127.0.0.1:8000**, cole a pasta dos repos — a detecção é autom
 │   ├── updater.py    # download, troca, backup, rollback
 │   └── state.py      # mapping / state / config por pasta (.alldown/)
 ├── static/           # front vanilla: index.html, tokens.css, components.css,
-│                     #   shell.css, app.js, theme.js, contract/openapi.json
+│                     #   components-optional.css (fora do crítico), shell.css,
+│                     #   app.js, theme.js, contract/openapi.json
 ├── tests/js/         # testes do frontend (node --test, sem build)
 ├── pyproject.toml    # lint e pytest
 └── requirements.txt
@@ -109,7 +110,7 @@ Execute estes comandos antes de abrir pull request:
 
 ```bash
 .venv/bin/python -m pytest tests/ -q          # 169 testes (backend + contrato)
-node --test tests/js/*.test.mjs                # 23 testes do frontend
+node --test tests/js/*.test.mjs                # 38 testes do frontend
 node --check static/app.js
 uvx --from ruff==0.16.8 ruff check app.py core tray.py tests/
 uvx --from pyright==1.1.414 pyright --pythonpath .venv/bin/python app.py core tray.py

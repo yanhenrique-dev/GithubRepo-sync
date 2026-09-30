@@ -13,10 +13,10 @@
 <link rel="preload" href="/static/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/inter-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/tokens.css?v=1" fetchpriority="high">
-<link rel="stylesheet" href="/static/components.css?v=1" fetchpriority="high">
-<link rel="stylesheet" href="/static/shell.css?v=1">
-<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/tokens.css?v=3" fetchpriority="high">
+<link rel="stylesheet" href="/static/components.css?v=3" fetchpriority="high">
+<link rel="stylesheet" href="/static/shell.css?v=3">
+<script src="/static/theme.js?v=3"></script>
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -109,7 +109,7 @@
       <nav class="breadcrumbs" aria-label="Trilha de navegação">
         <span translate="no">RepoRefresh</span>
         <svg class="icon" data-size="xs" aria-hidden="true" focusable="false"><use href="#i-chevron"></use></svg>
-        <strong id="view-title">Biblioteca</strong>
+        <strong id="view-title" aria-current="page">Biblioteca</strong>
       </nav>
 
       <div class="topbar__actions">
@@ -152,9 +152,9 @@
           </header>
 
           <section class="steps" aria-label="Etapas da operação">
-            <div class="step"><span class="step__index">01</span><span class="step__title">Localizar</span><span class="step__body">pastas e arquivos ZIP</span></div>
-            <div class="step"><span class="step__index">02</span><span class="step__title">Comparar</span><span class="step__body">SHA local com remoto</span></div>
-            <div class="step"><span class="step__index">03</span><span class="step__title">Trocar</span><span class="step__body">com backup e reversão</span></div>
+            <div class="step" id="step-locate"><span class="step__index">01</span><span class="step__title">Localizar</span><span class="step__body">pastas e arquivos ZIP</span></div>
+            <div class="step" id="step-compare"><span class="step__index">02</span><span class="step__title">Comparar</span><span class="step__body">SHA local com remoto</span></div>
+            <div class="step" id="step-swap"><span class="step__index">03</span><span class="step__title">Trocar</span><span class="step__body">com backup e reversão</span></div>
           </section>
 
           <section data-component="card" data-padding="large" aria-labelledby="path-title">
@@ -202,10 +202,10 @@
           </div>
 
           <section class="summary-grid" aria-label="Resumo da operação">
-            <div class="stat-card"><span class="stat-card__label">Itens detectados</span><span class="stat-card__value" id="sum-total">0</span><span class="stat-card__hint">pastas + arquivos ZIP</span></div>
-            <div class="stat-card" data-tone="success"><span class="stat-card__label">Sincronizados</span><span class="stat-card__value" id="sum-ready">0</span><span class="stat-card__hint">commit local verificado</span></div>
-            <div class="stat-card" data-tone="warning"><span class="stat-card__label">Para atualizar</span><span class="stat-card__value" id="sum-behind">0</span><span class="stat-card__hint">commits disponíveis</span></div>
-            <div class="stat-card" data-tone="info"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></div>
+            <button type="button" class="stat-card" data-filter-link="all" aria-label="Ver todos os itens"><span class="stat-card__label">Itens detectados</span><span class="stat-card__value" id="sum-total">0</span><span class="stat-card__hint">pastas + arquivos ZIP</span></button>
+            <button type="button" class="stat-card" data-tone="success" data-filter-link="ready" aria-label="Ver sincronizados"><span class="stat-card__label">Sincronizados</span><span class="stat-card__value" id="sum-ready">0</span><span class="stat-card__hint">commit local verificado</span></button>
+            <button type="button" class="stat-card" data-tone="warning" data-filter-link="behind" aria-label="Ver pendentes de atualização"><span class="stat-card__label">Para atualizar</span><span class="stat-card__value" id="sum-behind">0</span><span class="stat-card__hint">commits disponíveis</span></button>
+            <button type="button" class="stat-card" data-tone="info" data-filter-link="unmapped" aria-label="Ver itens para revisão"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></button>
           </section>
 
           <section data-component="card" aria-labelledby="library-title">
@@ -361,6 +361,6 @@
 
 <div data-component="toast-region-v2" id="toast-region" role="region" aria-label="Notificações"></div>
 
-<script src="/static/app.js?v=2" defer></script>
+<script src="/static/app.js?v=3" defer></script>
 </body>
 </html>
