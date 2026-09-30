@@ -42,6 +42,8 @@ const dom = {
   btnAuto: $("btn-auto"),
   btnMode: $("btn-mode"),
   btnBackup: $("btn-backup"),
+  btnShortcuts: $("btn-shortcuts"),
+  labelShortcuts: $("label-shortcuts"),
   labelAuto: $("label-auto"),
   labelMode: $("label-mode"),
   labelBackup: $("label-backup"),
@@ -62,6 +64,7 @@ const state = {
   lastScanFailed: false,
   confirmRollback: null,
   confirmUpdate: null,
+  shortcuts: true,
   theme: "dark",
   pathTimer: null,
 };
@@ -464,6 +467,7 @@ function render() {
     button.toggleAttribute("data-pressed", active);
     button.setAttribute("aria-checked", active ? "true" : "false");
   });
+  syncFilterTabIndex();
 
   let html;
   if (state.busy && !state.rows.length && state.scanning) {
@@ -632,6 +636,10 @@ function setBusy(value) {
   dom.syncDot.dataset.tone = value ? "busy" : "ok";
   dom.syncLabel.textContent = value ? "processando" : "pronto";
   dom.statusProgress.hidden = !value;
+  // aria-busy: esqueleto é só visual, sem isso leitor de tela não sabe que a tabela
+  // está carregando (WCAG 4.1.3). data-busy só baixa opacidade e bloqueia ponteiro.
+  const table = document.getElementById("repo-table");
+  if (table) table.setAttribute("aria-busy", value ? "true" : "false");
   // O render precisa acompanhar a virada de busy: sem isso nao aparece o
   // esqueleto durante a espera da rede (/api/scan tem timeout de 900 s) e,
   // pior, um scan que volte vazio deixa a tabela presa no skeleton.
@@ -1019,6 +1027,7 @@ function paintSwitches() {
   paint(dom.btnAuto, dom.labelAuto, state.auto, "Ativa", "Pausada");
   paint(dom.btnMode, dom.labelMode, state.zipOnly, "Só ZIP", "Pastas");
   paint(dom.btnBackup, dom.labelBackup, state.backup, "Ativo", "Desligado");
+  paint(dom.btnShortcuts, dom.labelShortcuts, state.shortcuts, "Ligados", "Desligados");
 }
 
 async function postFlag(endpoint, payload, apply) {
@@ -1050,28 +1059,49 @@ async function postFlag(endpoint, payload, apply) {
 function syncSidebarAccessibility() {
   const mobile = window.matchMedia ? window.matchMedia("(max-width: 767px)").matches : false;
   const open = dom.sidebar.dataset.open === "true";
+  // Em desktop o off-canvas não existe: um data-open="true" herdado de antes do
+  // resize faria o menu reaparecer aberto, cobrindo o conteúdo, ao voltar a mobile.
+  if (!mobile && open) {
+    dom.sidebar.dataset.open = "false";
+    dom.scrim.dataset.visible = "false";
+    sidebarMenuButton()?.setAttribute("aria-expanded", "false");
+    sidebarMenuButton()?.setAttribute("aria-label", "Abrir menu");
+    return;
+  }
   dom.sidebar.inert = Boolean(mobile && !open);
   dom.sidebar.setAttribute("aria-hidden", mobile && !open ? "true" : "false");
+}
+
+function sidebarMenuButton() {
+  return document.querySelector(".topbar__menu");
 }
 
 function toggleSidebar() {
   const open = dom.sidebar.dataset.open !== "true";
   dom.sidebar.dataset.open = open ? "true" : "false";
   dom.scrim.dataset.visible = open ? "true" : "false";
-  const menu = document.querySelector(".topbar__menu");
+  const menu = sidebarMenuButton();
   menu?.setAttribute("aria-expanded", open ? "true" : "false");
   menu?.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
   syncSidebarAccessibility();
+  // O drawer é um off-canvas: sem mover o foco para dentro, o Tab continua no
+  // conteúdo coberto e o leitor de tela nem sinaliza que o menu abriu.
+  if (open) {
+    const first = dom.sidebar.querySelector("button, a[href]");
+    if (first) first.focus();
+  }
 }
 
-function closeSidebar() {
+function closeSidebar(options = {}) {
   if (dom.sidebar.dataset.open !== "true") return;
   dom.sidebar.dataset.open = "false";
   dom.scrim.dataset.visible = "false";
-  const menu = document.querySelector(".topbar__menu");
+  const menu = sidebarMenuButton();
   menu?.setAttribute("aria-expanded", "false");
   menu?.setAttribute("aria-label", "Abrir menu");
   syncSidebarAccessibility();
+  // Devolve o foco ao gatilho — sem isso o foco fica num elemento que sumiu.
+  if (options.returnFocus !== false) menu?.focus();
 }
 
 function focusScan() {
@@ -1085,20 +1115,32 @@ function initScrollThumb() {
   const thumb = dom.pageThumb;
   if (!viewport || !thumb) return;
 
+  let pending = false;
+  let lastState = { top: -1, height: -1, visible: "" };
   const sync = () => {
-    const { scrollTop, scrollHeight, clientHeight } = viewport;
-    const scrollable = scrollHeight - clientHeight;
-    if (scrollable <= 2) {
-      thumb.dataset.visible = "false";
-      thumb.style.height = "0px";
-      return;
-    }
-    const ratio = clientHeight / scrollHeight;
-    const height = Math.max(24, Math.round(clientHeight * ratio));
-    const offset = Math.round((scrollTop / scrollable) * (clientHeight - height));
-    thumb.dataset.visible = "true";
-    thumb.style.height = `${height}px`;
-    thumb.style.transform = `translateY(${offset}px)`;
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
+      const scrollable = scrollHeight - clientHeight;
+      if (scrollable <= 2) {
+        if (lastState.visible !== "false") {
+          thumb.dataset.visible = "false";
+          thumb.style.height = "0px";
+          lastState = { top: -1, height: -1, visible: "false" };
+        }
+        return;
+      }
+      const ratio = clientHeight / scrollHeight;
+      const height = Math.max(24, Math.round(clientHeight * ratio));
+      const offset = Math.round((scrollTop / scrollable) * (clientHeight - height));
+      if (lastState.height === height && lastState.top === offset && lastState.visible === "true") return;
+      lastState = { top: offset, height, visible: "true" };
+      thumb.dataset.visible = "true";
+      thumb.style.height = `${height}px`;
+      thumb.style.transform = `translateY(${offset}px)`;
+    });
   };
 
   viewport.addEventListener("scroll", sync, { passive: true });
@@ -1188,6 +1230,7 @@ function init() {
 
   applyTheme(storeGet("alldown.theme") || dom.root.dataset.colorScheme || "dark", false);
   state.auto = storeGet("alldown.auto") !== "0";
+  state.shortcuts = storeGet("alldown.shortcuts") !== "0";
   dom.pathInput.value = storeGet("alldown.path") || "";
 
   paintSwitches();
@@ -1221,9 +1264,9 @@ $("form-path").addEventListener("submit", (event) => {
 let searchTimer = null;
 dom.search.addEventListener("input", (event) => {
   state.query = event.target.value;
-  storeSet("alldown.query", state.query);
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(() => {
+    storeSet("alldown.query", state.query);
     render();
     writeHashState();
   }, 150);
@@ -1234,13 +1277,26 @@ dom.filters.addEventListener("click", (event) => {
   if (button) setFilter(button.dataset.filter);
 });
 
+/* Roving tabindex: o APG exige UM tab stop no radiogroup, não cinco. Só o filtro
+   marcado é tabbável; as setas movem foco e seleção, como manda o padrão. */
+function syncFilterTabIndex() {
+  dom.filters.querySelectorAll("[data-filter]").forEach((button) => {
+    const checked = button.getAttribute("aria-checked") === "true";
+    button.setAttribute("tabindex", checked ? "0" : "-1");
+  });
+}
+
 dom.filters.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+  if (!keys.includes(event.key)) return;
   const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
   const current = buttons.indexOf(document.activeElement);
   if (current === -1) return;
   event.preventDefault();
-  const next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+  let next;
+  if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = buttons.length - 1;
+  else next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
   buttons[next].focus();
   setFilter(buttons[next].dataset.filter);
 });
@@ -1271,6 +1327,21 @@ dom.btnBackup.addEventListener("click", () => {
     state.backup = Boolean(result.backup);
     say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
   });
+});
+
+// Preferência só do cliente: não vai ao servidor (WCAG 2.1.4 exige forma de
+// desativar atalho de tecla única).
+dom.btnShortcuts.addEventListener("click", () => {
+  state.shortcuts = !state.shortcuts;
+  storeSet("alldown.shortcuts", state.shortcuts ? "1" : "0");
+  paintSwitches();
+  say(
+    state.shortcuts
+      ? "Atalhos de teclado ligados: E escaneia, C checa."
+      : "Atalhos de teclado desligados.",
+    "info",
+    true
+  );
 });
 
 function validatePathInput() {
@@ -1355,8 +1426,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.shiftKey) return;
+  if (!state.shortcuts) return;
+  if (event.repeat) return; // segurar a tecla nao deve repetir a operacao
   const tag = event.target?.tagName || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (event.target?.isContentEditable) return;
   const key = event.key.toLowerCase();
   if (key === "e") {
     event.preventDefault();

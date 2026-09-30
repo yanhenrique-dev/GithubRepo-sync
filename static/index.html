@@ -225,17 +225,20 @@
               </label>
 
               <div data-component="segmented-control-v2" id="filters" role="radiogroup" aria-label="Filtrar repositórios">
-                <button type="button" role="radio" aria-checked="true" data-filter="all" data-pressed data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Todos</span><span data-slot="segmented-control-v2-item-count" id="c-all">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="behind" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Atualizar</span><span data-slot="segmented-control-v2-item-count" id="c-behind">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="ready" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Em dia</span><span data-slot="segmented-control-v2-item-count" id="c-ok">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="unmapped" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Sem dono</span><span data-slot="segmented-control-v2-item-count" id="c-unmapped">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="error" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Erros</span><span data-slot="segmented-control-v2-item-count" id="c-error">0</span></span></button>
+                <button type="button" role="radio" aria-checked="true" data-filter="all" tabindex="0" data-pressed data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Todos</span><span data-slot="segmented-control-v2-item-count" id="c-all">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="behind" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Atualizar</span><span data-slot="segmented-control-v2-item-count" id="c-behind">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="ready" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Em dia</span><span data-slot="segmented-control-v2-item-count" id="c-ok">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="unmapped" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Sem dono</span><span data-slot="segmented-control-v2-item-count" id="c-unmapped">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="error" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Erros</span><span data-slot="segmented-control-v2-item-count" id="c-error">0</span></span></button>
               </div>
             </div>
 
             <div data-component="divider-v2"></div>
 
-            <div class="table-scroll">
+            <!-- tabindex + role=region: sem isso a tabela de 7 colunas só rola
+                 horizontalmente por mouse (WCAG 2.1.1). O app já faz o mesmo em
+                 #page-shell__inner e no <pre id="log">. -->
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de repositórios, rolagem horizontal">
               <table data-component="data-table" id="repo-table">
                 <caption class="sr-only">Repositórios detectados na pasta em serviço</caption>
                 <thead>
@@ -323,6 +326,19 @@
                     <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
                   </button>
                   <span data-component="tag" id="label-backup">Ativo</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row__copy">
+                  <span class="setting-row__title">Atalhos de teclado</span>
+                  <span class="setting-row__body">Teclas <code>E</code> (escanear) e <code>C</code> (checar) sem modificador. Desligue se preferir não acionar operações pelo teclado.</span>
+                </div>
+                <div class="setting-row__control">
+                  <button data-component="switch" data-console-toggle-size="md" data-checked type="button" id="btn-shortcuts" role="switch" aria-checked="true" aria-label="Atalhos de teclado">
+                    <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
+                  </button>
+                  <span data-component="tag" id="label-shortcuts">Ligados</span>
                 </div>
               </div>
             </div>

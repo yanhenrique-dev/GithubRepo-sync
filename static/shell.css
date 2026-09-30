@@ -199,7 +199,9 @@
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  /* Acima do .mobile-scrim (40) para que o botão de fechar o menu não fique
+     atrás do overlay com o menu aberto — e abaixo da .sidebar (50). */
+  z-index: 45;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -358,7 +360,7 @@
   box-shadow: var(--v2-elevation-raised);
 }
 .stat-card__label { display: flex; align-items: center; gap: 6px; color: var(--v2-text-text-muted); font-size: var(--v2-text-label-size); font-weight: var(--v2-weight-medium); line-height: var(--v2-text-label-line); letter-spacing: var(--v2-text-label-tracking); }
-.stat-card__value { color: var(--v2-text-text-base); font-size: 24px; font-weight: var(--v2-weight-emphasis); line-height: 28px; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
+.stat-card__value { color: var(--v2-text-text-base); font-size: var(--v2-text-stat-size); font-weight: var(--v2-weight-emphasis); line-height: var(--v2-text-stat-line); letter-spacing: var(--v2-text-stat-spacing); font-variant-numeric: tabular-nums; }
 .stat-card__hint { color: var(--v2-text-text-faint); font-size: var(--v2-text-micro-size); line-height: 1; letter-spacing: var(--v2-text-micro-tracking); }
 .stat-card[data-tone="success"] .stat-card__value { color: var(--v2-state-fg-success); }
 .stat-card[data-tone="warning"] .stat-card__value { color: var(--v2-state-fg-warning); }
@@ -379,6 +381,8 @@
 .library-toolbar [data-component="segmented-control-v2"]::-webkit-scrollbar { display: none; }
 
 .table-scroll { max-width: 100%; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--v2-border-border-muted) transparent; }
+/* Focalizável (tabindex no HTML) precisa de indicador de foco — WCAG 2.4.7. */
+.table-scroll:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
 
 /* Pilha de conteúdo dentro de uma célula (identidade + nota). */
 .cell-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -410,7 +414,7 @@
    Atividade
    -------------------------------------------------------------------------- */
 .log-panel { display: flex; flex-direction: column; min-height: 0; gap: 12px; }
-.log-viewport { max-height: min(60vh, 520px); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--v2-border-border-muted) transparent; }
+.log-viewport { max-height: min(60dvh, 520px); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--v2-border-border-muted) transparent; }
 .log-viewport pre { margin: 0; padding: 12px; border-radius: var(--v2-radius-control); background: var(--v2-background-bg-layer-02); color: var(--v2-text-text-muted); font-family: var(--v2-font-family-mono); font-size: var(--v2-text-micro-size); line-height: 16px; letter-spacing: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* --------------------------------------------------------------------------
