@@ -255,6 +255,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
+  text-wrap: balance;
   color: var(--v2-text-text-base);
   font-size: var(--v2-text-title-size);
   font-weight: var(--v2-weight-medium);

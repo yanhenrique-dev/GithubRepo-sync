@@ -88,6 +88,14 @@ const REDUCED_MOTION =
 
 const TONE_ICON = { success: "check", warning: "alert", danger: "alert", info: "activity" };
 
+/* Tempos de interação (ms). Nomeados para leitura: mudar debounce sem caçar literais. */
+const SEARCH_DEBOUNCE_MS = 150;
+const PATH_AUTO_SCAN_DELAY_MS = 700;
+const TOAST_LIFETIME_MS = 4600;
+const TOAST_HOVER_LIFETIME_MS = 2000;
+const LOG_POLL_MS = 8000;
+const MAX_TOASTS = 4;
+
 if (!dom.repoList || !dom.pathInput || !dom.status || !dom.pathError || !dom.themeColor || !dom.liveStatus) {
   throw new Error("RepoRefresh: interface não carregada");
 }
@@ -288,8 +296,9 @@ function renderRow(row, index) {
       ? "Atualizar para o commit remoto"
       : "Checar atualizações";
 
+  const backupNote = state.backup ? " Com backup para reversão." : " Sem backup: sem reversão.";
   const hint = updating
-    ? '<p class="rollback-hint">Atualizar baixa o commit remoto e substitui o conteúdo local. Clique de novo para confirmar.</p>'
+    ? `<p class="rollback-hint">Atualizar baixa o commit remoto e substitui o conteúdo local.${backupNote} Clique de novo para confirmar.</p>`
     : reverting
       ? '<p class="rollback-hint">Reverter troca o estado atual pelo backup. Clique de novo para confirmar.</p>'
       : "";
@@ -333,6 +342,9 @@ function renderEmpty() {
         <span data-slot="empty-state-icon">${icon("scan", "large")}</span>
         <p data-slot="empty-state-title">Nenhum repositório encontrado</p>
         <p data-slot="empty-state-body">Confira o caminho escolhido. A pasta pode estar vazia ou sem permissão de leitura.</p>
+        <div data-slot="empty-state-actions">
+          <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="normal" type="button" data-action="focus-scan" data-icon>${icon("folder")}<span>Escolher outra pasta</span></button>
+        </div>
       </div>`;
   } else {
     body = `<div data-component="empty-state">
@@ -659,13 +671,13 @@ function toast(message, tone = "info") {
 
   item.querySelector("[data-slot=toast-v2-close]").addEventListener("click", dismiss);
   dom.toastRegion.appendChild(item);
-  while (dom.toastRegion.children.length > 4) dom.toastRegion.firstElementChild.remove();
+  while (dom.toastRegion.children.length > MAX_TOASTS) dom.toastRegion.firstElementChild.remove();
   // Não some sob o mouse: hover pausa, saída rearma com 2s.
-  let dismissTimer = window.setTimeout(dismiss, 4600);
+  let dismissTimer = window.setTimeout(dismiss, TOAST_LIFETIME_MS);
   item.addEventListener("mouseenter", () => window.clearTimeout(dismissTimer));
   item.addEventListener("mouseleave", () => {
     window.clearTimeout(dismissTimer);
-    dismissTimer = window.setTimeout(dismiss, 2000);
+    dismissTimer = window.setTimeout(dismiss, TOAST_HOVER_LIFETIME_MS);
   });
 }
 
@@ -1026,7 +1038,7 @@ async function suggestRepo(index) {
     row.suggestions = result.items || [];
     render();
     say(
-      row.suggestions.length ? `${row.suggestions.length} sugestões encontradas.` : "Nenhuma sugestão encontrada.",
+      row.suggestions.length ? `${row.suggestions.length} sugestões encontradas.` : "Nenhuma sugestão encontrada. Cole a URL manualmente.",
       row.suggestions.length ? "success" : "warning",
       true
     );
@@ -1329,7 +1341,7 @@ function init() {
     logTimer = setTimeout(() => {
       const active = document.visibilityState === "visible" && state.view === "activity";
       (active ? refreshLog() : Promise.resolve()).finally(scheduleLogRefresh);
-    }, 8000);
+    }, LOG_POLL_MS);
   }
   scheduleLogRefresh();
 
@@ -1377,7 +1389,7 @@ function registerEvents() {
       storeSet("alldown.query", state.query);
       render();
       writeHashState();
-    }, 150);
+    }, SEARCH_DEBOUNCE_MS);
   });
 
   dom.filters.addEventListener("click", (event) => {
@@ -1453,7 +1465,7 @@ function registerEvents() {
     if (!state.auto || !looksLikePath(value)) return;
     if (value === state.base && !state.lastScanFailed) return;
     window.clearTimeout(state.pathTimer);
-    state.pathTimer = window.setTimeout(doScan, 700);
+    state.pathTimer = window.setTimeout(doScan, PATH_AUTO_SCAN_DELAY_MS);
   });
 
   dom.pathInput.addEventListener("blur", () => {
