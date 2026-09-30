@@ -17,21 +17,21 @@
   font-style: normal;
   font-weight: 440;
   font-display: swap;
-  src: url("/static/fonts/inter-400.woff2") format("woff2");
+  src: url("/static/fonts/inter-400.woff2?v=3") format("woff2");
 }
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 530;
   font-display: swap;
-  src: url("/static/fonts/inter-500.woff2") format("woff2");
+  src: url("/static/fonts/inter-500.woff2?v=3") format("woff2");
 }
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 610;
   font-display: swap;
-  src: url("/static/fonts/inter-600.woff2") format("woff2");
+  src: url("/static/fonts/inter-600.woff2?v=3") format("woff2");
 }
 
 /* --------------------------------------------------------------------------

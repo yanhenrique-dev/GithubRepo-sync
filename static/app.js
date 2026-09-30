@@ -296,7 +296,7 @@ function renderRow(row, index) {
 
   return `<tr data-row-index="${index}"${row.busy ? ' data-busy="true"' : ""}>
       <td>${renderIdentityCell(row, index)}</td>
-      <td>${row.auto ? `<span data-component="tag">${esc(branch)}</span>` : `<span data-component="tag" data-high-contrast>${esc(branch)}</span>`}</td>
+      <td>${row.auto ? `<span data-component="tag">${esc(branch)}</span>` : `<span data-component="tag" title="Branch fixada no mapeamento" data-high-contrast>${esc(branch)}</span>`}</td>
       <td>${esc(artifactLabel(row))}</td>
       <td><code>${esc(shortSha(row.local_sha))}</code></td>
       <td><code>${esc(shortSha(row.remote_sha))}</code></td>
@@ -469,6 +469,13 @@ function paintSteps(counts) {
   if (compare) compare.dataset.done = checked ? "true" : "false";
   if (swap) swap.dataset.done = state.base && counts.behind === 0 && counts.all > 0 ? "true" : "false";
   document.querySelectorAll("[data-filter-link]").forEach((card) => {
+    if ("attentionCard" in card.dataset) {
+      // H4: o card soma sem-dono+erros; o link vai para a categoria não-vazia,
+      // senão o clique mostrava "Nenhum item neste filtro" com N > 0 no card.
+      const target = counts.unmapped > 0 ? "unmapped" : "error";
+      card.dataset.filterLink = target;
+      card.setAttribute("aria-label", target === "unmapped" ? "Ver itens sem dono" : "Ver itens com erro");
+    }
     card.dataset.active = card.dataset.filterLink === state.filter ? "true" : "false";
   });
 }
@@ -509,6 +516,8 @@ function renderUnsafe() {
   restoreUrlDrafts(drafts);
 
   dom.btnAll.disabled = state.busy || !state.base || counts.behind === 0;
+  const allLabel = $("btn-all-label");
+  if (allLabel) allLabel.textContent = counts.behind > 0 ? `Atualizar pendentes (${counts.behind})` : "Atualizar pendentes";
 }
 
 /* ------------------------------------------------------------------ theme */
@@ -651,7 +660,13 @@ function toast(message, tone = "info") {
   item.querySelector("[data-slot=toast-v2-close]").addEventListener("click", dismiss);
   dom.toastRegion.appendChild(item);
   while (dom.toastRegion.children.length > 4) dom.toastRegion.firstElementChild.remove();
-  window.setTimeout(dismiss, 4600);
+  // Não some sob o mouse: hover pausa, saída rearma com 2s.
+  let dismissTimer = window.setTimeout(dismiss, 4600);
+  item.addEventListener("mouseenter", () => window.clearTimeout(dismissTimer));
+  item.addEventListener("mouseleave", () => {
+    window.clearTimeout(dismissTimer);
+    dismissTimer = window.setTimeout(dismiss, 2000);
+  });
 }
 
 function setBusy(value) {

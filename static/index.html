@@ -5,14 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta id="theme-color" name="theme-color" content="#161616">
 <meta name="description" content="RepoRefresh — bancada local para manter cópias GitHub fiéis ao commit certo.">
+<meta name="color-scheme" content="dark light">
 <title>RepoRefresh — bancada local</title>
 <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32">
 <link rel="icon" type="image/png" href="/static/icon-32.png" sizes="32x32">
 <link rel="icon" type="image/png" href="/static/icon-16.png" sizes="16x16">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
-<link rel="preload" href="/static/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/static/fonts/inter-500.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/static/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-400.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-500.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-600.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/app.js?v=3" as="script">
 <link rel="stylesheet" href="/static/tokens.css?v=3" fetchpriority="high">
 <link rel="stylesheet" href="/static/components.css?v=3" fetchpriority="high">
 <link rel="stylesheet" href="/static/shell.css?v=3">
@@ -148,7 +150,7 @@
 
           <header class="page-header">
             <h1 class="page-header__title">Biblioteca</h1>
-            <p class="page-header__description">Escolha uma pasta, confirme a identidade de cada repositório e troque apenas o conteúdo verificado — sempre com backup e reversão.</p>
+            <p class="page-header__description">Escolha uma pasta, confirme cada repositório e troque o conteúdo verificado — sempre com backup e reversão.</p>
           </header>
 
           <section class="steps" aria-label="Etapas da operação">
@@ -187,7 +189,7 @@
                 </button>
                 <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="small" type="button" id="btn-all" data-icon>
                   <svg class="icon" data-slot="icon" data-size="small" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
-                  <span>Atualizar pendentes</span>
+                  <span id="btn-all-label">Atualizar pendentes</span>
                 </button>
               </div>
             </form>
@@ -205,7 +207,7 @@
             <button type="button" class="stat-card" data-filter-link="all" aria-label="Ver todos os itens"><span class="stat-card__label">Itens detectados</span><span class="stat-card__value" id="sum-total">0</span><span class="stat-card__hint">pastas + arquivos ZIP</span></button>
             <button type="button" class="stat-card" data-tone="success" data-filter-link="ready" aria-label="Ver sincronizados"><span class="stat-card__label">Sincronizados</span><span class="stat-card__value" id="sum-ready">0</span><span class="stat-card__hint">commit local verificado</span></button>
             <button type="button" class="stat-card" data-tone="warning" data-filter-link="behind" aria-label="Ver pendentes de atualização"><span class="stat-card__label">Para atualizar</span><span class="stat-card__value" id="sum-behind">0</span><span class="stat-card__hint">commits disponíveis</span></button>
-            <button type="button" class="stat-card" data-tone="info" data-filter-link="unmapped" aria-label="Ver itens para revisão"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></button>
+            <button type="button" class="stat-card" data-tone="info" data-filter-link="unmapped" data-attention-card aria-label="Ver itens para revisão"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></button>
           </section>
 
           <section data-component="card" aria-labelledby="library-title">
@@ -262,7 +264,7 @@
         <section class="page" data-page="activity" id="activity-view" hidden>
           <header class="page-header">
             <h1 class="page-header__title">Atividade</h1>
-            <p class="page-header__description">Registro contínuo de scans, comparações, trocas e reversões executadas nesta máquina.</p>
+            <p class="page-header__description">Scans, comparações, trocas e reversões executadas nesta máquina.</p>
           </header>
 
           <section data-component="card" aria-labelledby="log-title">
@@ -285,7 +287,7 @@
         <section class="page" data-page="settings" id="settings-view" hidden>
           <header class="page-header">
             <h1 class="page-header__title">Preferências</h1>
-            <p class="page-header__description">Defina como o RepoRefresh trata atualização, backup e verificação automática.</p>
+            <p class="page-header__description">Atualização, backup e verificação automática.</p>
           </header>
 
           <section data-component="card" aria-label="Ajustes da bancada">

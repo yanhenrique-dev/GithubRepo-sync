@@ -748,6 +748,10 @@ body {
 [data-component="toast-v2"][data-tone="warning"] [data-slot="toast-v2-icon"] { color: var(--v2-state-fg-warning); }
 [data-component="toast-v2"][data-tone="danger"] [data-slot="toast-v2-icon"] { color: var(--v2-state-fg-danger); }
 [data-component="toast-v2"][data-tone="info"] [data-slot="toast-v2-icon"] { color: var(--v2-state-fg-info); }
+[data-component="toast-v2"][data-tone="success"] { box-shadow: var(--v2-elevation-floating), inset 2px 0 0 0 var(--v2-state-fg-success); }
+[data-component="toast-v2"][data-tone="warning"] { box-shadow: var(--v2-elevation-floating), inset 2px 0 0 0 var(--v2-state-fg-warning); }
+[data-component="toast-v2"][data-tone="danger"] { box-shadow: var(--v2-elevation-floating), inset 2px 0 0 0 var(--v2-state-fg-danger); }
+[data-component="toast-v2"][data-tone="info"] { box-shadow: var(--v2-elevation-floating), inset 2px 0 0 0 var(--v2-state-fg-info); }
 
 @keyframes v2-toast-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes v2-toast-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(8px); } }

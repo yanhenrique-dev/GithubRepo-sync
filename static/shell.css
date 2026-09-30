@@ -406,6 +406,7 @@
 .repo-actions [data-component="icon-button-v2"]:hover { color: var(--v2-text-text-base); }
 
 .map-row > td { height: auto; padding: 0 12px 12px; background: color-mix(in oklab, var(--v2-background-bg-accent) 4%, transparent); }
+.map-row > td { box-shadow: inset 2px 0 0 0 var(--v2-background-bg-accent); }
 .map-form { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
 .map-form [data-component="text-input-v2"] { flex: 1 1 280px; width: auto; }
 .map-suggestions { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 8px; }
