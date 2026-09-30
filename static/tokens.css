@@ -17,21 +17,21 @@
   font-style: normal;
   font-weight: 440;
   font-display: swap;
-  src: url("/static/fonts/inter-400.woff2") format("woff2");
+  src: url("/static/fonts/inter-400.woff2?v=3") format("woff2");
 }
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 530;
   font-display: swap;
-  src: url("/static/fonts/inter-500.woff2") format("woff2");
+  src: url("/static/fonts/inter-500.woff2?v=3") format("woff2");
 }
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 610;
   font-display: swap;
-  src: url("/static/fonts/inter-600.woff2") format("woff2");
+  src: url("/static/fonts/inter-600.woff2?v=3") format("woff2");
 }
 
 /* --------------------------------------------------------------------------
@@ -46,7 +46,8 @@
   --v2-grey-300: #eee;
   --v2-grey-400: #dbdbdb;
   --v2-grey-500: #aeaeae;
-  --v2-grey-600: gray;
+  /* Hex explícito: `gray` é alias de `grey` e depende de resolução de keyword. */
+  --v2-grey-600: #808080;
   --v2-grey-700: #5c5c5c;
   --v2-grey-800: #3a3a3a;
   --v2-grey-900: #2e2e2e;
@@ -267,6 +268,11 @@
   --v2-motion-toast: 280ms cubic-bezier(0.2, 0, 0, 1);
   --v2-motion-toast-opacity: 160ms ease-out;
 
+  /* Stat card — valores literais movidos para tokens (regra: só tokens nos valores). */
+  --v2-text-stat-size: 24px;
+  --v2-text-stat-line: 28px;
+  --v2-text-stat-spacing: -0.4px;
+
   /* Geometria do shell (§3 do enunciado) */
   --v2-header-height: 48px;
   --v2-sidebar-width: 232px;
@@ -293,7 +299,7 @@
 
   --v2-text-text-base: var(--v2-grey-1100);
   --v2-text-text-muted: var(--v2-grey-700);
-  /* faint ajustado para #6b6b6b (era grey-600): contraste ≥4.5 em superfícies claras. */
+  /* faint: #6b6b6b em vez de grey-600 — contraste ≥4.5:1 em superfícies claras (axe). */
   --v2-text-text-faint: #6b6b6b;
   --v2-text-text-inverse: var(--v2-grey-50);
   --v2-text-text-contrast: var(--v2-grey-50);
@@ -312,7 +318,11 @@
   --v2-border-border-base: var(--v2-alpha-dark-10);
   --v2-border-border-strong: var(--v2-alpha-dark-20);
   --v2-border-border-inverse: var(--v2-grey-1000);
-  --v2-border-border-focus: var(--v2-blue-500);
+  /* focus: blue-700 em vez de blue-500 (2.73:1) — ≥3:1 em toda superfície clara
+     (6.27:1 em #fff, 6.01:1 em layer-01, 5.60:1 em layer-02). O anel é desenhado
+     com outline-offset, ou seja, fora do fill do elemento: o fundo relevante é o da
+     superfície, não o do botão contrast. */
+  --v2-border-border-focus: var(--v2-blue-700);
 
   --v2-overlay-simple-overlay-hover: var(--v2-alpha-dark-4);
   --v2-overlay-simple-overlay-pressed: var(--v2-alpha-dark-8);
@@ -324,10 +334,12 @@
   --v2-overlay-gradient-depth-bot: var(--v2-alpha-light-0);
 
   --v2-state-bg-success: var(--v2-green-100);
-  --v2-state-fg-success: var(--v2-green-800);
+  /* fg-success: green-900 em vez de green-800 (3.97:1) — contraste ≥4.5:1 no light.
+     A tag "Em dia" (11px) e a .status-line de sucesso (13px) usam este token. */
+  --v2-state-fg-success: var(--v2-green-900);
   --v2-state-border-success: var(--v2-green-300);
   --v2-state-bg-warning: var(--v2-yellow-100);
-  /* fg-warning ajustado para yellow-1100 (era yellow-800, 2.35:1 no bg): contraste ≥4.5. */
+  /* fg-warning: yellow-1100 em vez de yellow-800 (2.35:1) — contraste ≥4.5:1 no light. */
   --v2-state-fg-warning: var(--v2-yellow-1100);
   --v2-state-border-warning: var(--v2-yellow-300);
   --v2-state-bg-danger: var(--v2-red-100);
@@ -356,19 +368,8 @@
   --v2-avatar-border-pink: #c83d8b;
   --v2-avatar-bg-purple: #623be2;
   --v2-avatar-border-purple: #5230c2;
-
-  --v2-elevation-raised: 0px 2px 4px 0px var(--v2-alpha-dark-4), 0px 1px 2px -1px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-floating: 0px 8px 16px 0px var(--v2-alpha-dark-4), 0px 4px 8px 0px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-overlay: 0px 16px 32px 0px var(--v2-alpha-dark-4), 0px 8px 16px 0px var(--v2-alpha-dark-8), 0px 0px 0px 0.5px var(--v2-alpha-dark-12);
-  --v2-elevation-button-neutral: 0px 1px 1.5px 0px var(--v2-alpha-dark-10), 0px 0px 0px 0.5px var(--v2-alpha-dark-14);
-  --v2-elevation-button-contrast: 0px 1px 1.5px 0px var(--v2-alpha-dark-20), 0px 0px 0px 0.5px var(--v2-grey-800), inset 0px 1px 2px 0px var(--v2-alpha-light-14), inset 0px -1px 2px 0px var(--v2-alpha-dark-6);
-  --v2-elevation-elements: 0px 0.5px 0.5px 0px var(--v2-alpha-dark-40);
-  --v2-elevation-switch-off: inset 0px 1px 1px 0px var(--v2-alpha-dark-8), inset 0px 0.5px 0.5px 0px var(--v2-alpha-dark-8), inset 0px 0px 0px 0.5px var(--v2-alpha-dark-10);
-  --v2-elevation-switch-on: inset 0px 2px 2px 0px var(--v2-alpha-dark-10), inset 0px 1px 1px 0px var(--v2-alpha-dark-10), inset 0px 0px 0px 0.5px var(--v2-alpha-dark-20);
-
-  --v2-illustration-layer-01: var(--v2-grey-300);
-  --v2-illustration-layer-02: var(--v2-grey-400);
-  --v2-illustration-layer-03: var(--v2-grey-500);
+  /* B3: elevation/illustration do light são idênticos ao :root (linhas 202-214)
+     — herança já resolve, 12 linhas duplicadas removidas. */
 }
 
 /* --------------------------------------------------------------------------
@@ -390,7 +391,7 @@
 
   --v2-text-text-base: var(--v2-grey-100);
   --v2-text-text-muted: var(--v2-grey-500);
-  /* faint ajustado para #999 (era grey-600): contraste ≥4.5 em layer-01 no dark. */
+  /* faint: #999 em vez de grey-600 — contraste ≥4.5:1 em layer-01 no dark. */
   --v2-text-text-faint: #999999;
   --v2-text-text-inverse: var(--v2-grey-1100);
   --v2-text-text-contrast: var(--v2-grey-50);
@@ -409,7 +410,8 @@
   --v2-border-border-base: var(--v2-alpha-light-10);
   --v2-border-border-strong: var(--v2-alpha-light-20);
   --v2-border-border-inverse: var(--v2-grey-100);
-  --v2-border-border-focus: var(--v2-blue-500);
+  /* focus no dark: blue-300 — 12.20:1 em #161616, 10.46:1 em #242424. */
+  --v2-border-border-focus: var(--v2-blue-300);
 
   --v2-overlay-simple-overlay-hover: var(--v2-alpha-light-6);
   --v2-overlay-simple-overlay-pressed: var(--v2-alpha-light-10);

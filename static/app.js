@@ -22,6 +22,7 @@ const dom = {
   count: $("count"),
   status: $("status"),
   statusText: $("status-text"),
+  liveStatus: $("live-status"),
   statusIcon: $("status").querySelector("use"),
   statusProgress: $("status-progress"),
   log: $("log"),
@@ -41,6 +42,8 @@ const dom = {
   btnAuto: $("btn-auto"),
   btnMode: $("btn-mode"),
   btnBackup: $("btn-backup"),
+  btnShortcuts: $("btn-shortcuts"),
+  labelShortcuts: $("label-shortcuts"),
   labelAuto: $("label-auto"),
   labelMode: $("label-mode"),
   labelBackup: $("label-backup"),
@@ -61,16 +64,18 @@ const state = {
   lastScanFailed: false,
   confirmRollback: null,
   confirmUpdate: null,
+  shortcuts: true,
   theme: "dark",
   pathTimer: null,
 };
 
 const FILTER_INFO = {
-  all: { label: "Todos", test: () => true },
-  behind: { label: "Atualizar", test: (row) => row.behind === true },
-  ready: { label: "Em dia", test: (row) => row.behind === false },
-  unmapped: { label: "Sem dono", test: (row) => !row.mapped },
-  error: { label: "Erros", test: (row) => Boolean(row.error) },
+  // B4: sem `label` — o texto do filtro vive no HTML (index.html), fonte única.
+  all: { test: () => true },
+  behind: { test: (row) => row.behind === true },
+  ready: { test: (row) => row.behind === false },
+  unmapped: { test: (row) => !row.mapped },
+  error: { test: (row) => Boolean(row.error) },
 };
 
 const VIEWS = ["library", "activity", "settings"];
@@ -83,7 +88,15 @@ const REDUCED_MOTION =
 
 const TONE_ICON = { success: "check", warning: "alert", danger: "alert", info: "activity" };
 
-if (!dom.repoList || !dom.pathInput || !dom.status || !dom.pathError || !dom.themeColor) {
+/* Tempos de interação (ms). Nomeados para leitura: mudar debounce sem caçar literais. */
+const SEARCH_DEBOUNCE_MS = 150;
+const PATH_AUTO_SCAN_DELAY_MS = 700;
+const TOAST_LIFETIME_MS = 4600;
+const TOAST_HOVER_LIFETIME_MS = 2000;
+const LOG_POLL_MS = 8000;
+const MAX_TOASTS = 4;
+
+if (!dom.repoList || !dom.pathInput || !dom.status || !dom.pathError || !dom.themeColor || !dom.liveStatus) {
   throw new Error("RepoRefresh: interface não carregada");
 }
 
@@ -167,13 +180,15 @@ function artifactLabel(row) {
 }
 
 function countRows() {
-  const counts = {
-    all: state.rows.length,
-    behind: state.rows.filter((row) => row.behind === true).length,
-    ready: state.rows.filter((row) => row.behind === false).length,
-    unmapped: state.rows.filter((row) => !row.mapped).length,
-    error: state.rows.filter((row) => Boolean(row.error)).length,
-  };
+  // Um passe só. Antes eram 5 .filter() completos sobre state.rows, todo render,
+  // e o resultado era jogado fora por quem só precisa dos totais.
+  const counts = { all: state.rows.length, behind: 0, ready: 0, unmapped: 0, error: 0 };
+  for (const row of state.rows) {
+    if (row.behind === true) counts.behind += 1;
+    else if (row.behind === false) counts.ready += 1;
+    if (!row.mapped) counts.unmapped += 1;
+    if (row.error) counts.error += 1;
+  }
   $("nav-count").textContent = String(counts.all);
   $("c-all").textContent = String(counts.all);
   $("c-behind").textContent = String(counts.behind);
@@ -238,19 +253,19 @@ function renderMapForm(row, index) {
       ? `<span class="repo-note">${icon("search", "small")} ${esc(row.tried.join(" · "))}</span>`
       : "";
   return `<tr class="map-row" data-map-index="${index}"><td colspan="7">
-      <div class="map-form">
+      <form class="map-form" data-map-form="${index}">
         <label class="text-input-v2" data-component="text-input-v2" for="url-${index}">
           <span data-slot="text-input-v2-value">
             <input id="url-${index}" data-url-input="${index}" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://github.com/dono/repo…" aria-label="URL do GitHub para ${esc(row.name)}" data-slot="text-input-v2-input">
           </span>
         </label>
-        <button class="button-v2" data-component="button-v2" data-variant="contrast" data-size="normal" type="button" data-action="save-map" data-index="${index}" data-icon>
+        <button class="button-v2" data-component="button-v2" data-variant="contrast" data-size="normal" type="submit" data-action="save-map" data-index="${index}" data-icon>
           ${icon("check")}<span>Salvar</span>
         </button>
         <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="normal" type="button" data-action="suggest" data-index="${index}" data-icon>
           ${icon("spark")}<span>Sugerir</span>
         </button>
-      </div>
+      </form>
       ${tried ? `<div class="map-suggestions">${tried}</div>` : ""}
       ${suggestions}
     </td></tr>`;
@@ -281,15 +296,16 @@ function renderRow(row, index) {
       ? "Atualizar para o commit remoto"
       : "Checar atualizações";
 
+  const backupNote = state.backup ? " Com backup para reversão." : " Sem backup: sem reversão.";
   const hint = updating
-    ? '<p class="rollback-hint">Atualizar baixa o commit remoto e substitui o conteúdo local. Clique de novo para confirmar.</p>'
+    ? `<p class="rollback-hint">Atualizar baixa o commit remoto e substitui o conteúdo local.${backupNote} Clique de novo para confirmar.</p>`
     : reverting
       ? '<p class="rollback-hint">Reverter troca o estado atual pelo backup. Clique de novo para confirmar.</p>'
       : "";
 
   return `<tr data-row-index="${index}"${row.busy ? ' data-busy="true"' : ""}>
       <td>${renderIdentityCell(row, index)}</td>
-      <td>${row.auto ? `<span data-component="tag">${esc(branch)}</span>` : `<span data-component="tag" data-high-contrast>${esc(branch)}</span>`}</td>
+      <td>${row.auto ? `<span data-component="tag">${esc(branch)}</span>` : `<span data-component="tag" title="Branch fixada no mapeamento" data-high-contrast>${esc(branch)}</span>`}</td>
       <td>${esc(artifactLabel(row))}</td>
       <td><code>${esc(shortSha(row.local_sha))}</code></td>
       <td><code>${esc(shortSha(row.remote_sha))}</code></td>
@@ -326,6 +342,9 @@ function renderEmpty() {
         <span data-slot="empty-state-icon">${icon("scan", "large")}</span>
         <p data-slot="empty-state-title">Nenhum repositório encontrado</p>
         <p data-slot="empty-state-body">Confira o caminho escolhido. A pasta pode estar vazia ou sem permissão de leitura.</p>
+        <div data-slot="empty-state-actions">
+          <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="normal" type="button" data-action="focus-scan" data-icon>${icon("folder")}<span>Escolher outra pasta</span></button>
+        </div>
       </div>`;
   } else {
     body = `<div data-component="empty-state">
@@ -353,8 +372,129 @@ function restoreRepoFocus(focus) {
   if (target) target.focus({ preventScroll: true });
 }
 
+/**
+ * Rascunhos do formulário de mapeamento sobrevivem ao re-render.
+ *
+ * `render()` troca o innerHTML do <tbody> inteiro, o que destruía o <input> de URL
+ * junto com o que o usuário tinha digitado — e o foco ia para o <body>, de modo que
+ * o Tab recomeçava do topo. Qualquer evento dispava isso: digitar na busca (debounce
+ * de 150 ms), trocar filtro, setBusy, update. O beforeunload que existe para avisar
+ * "você tem texto não salvo" só cobre unload, não re-render — a proteção não cobria
+ * o caso real. Chaveado por row.name, não por índice: o índice é a posição em
+ * state.rows e muda quando a busca ou o filtro reordenam a tabela.
+ */
+function captureUrlDrafts() {
+  const drafts = new Map();
+  let focused = null;
+  dom.repoList.querySelectorAll("[data-url-input]").forEach((input) => {
+    const row = state.rows[Number(input.dataset.urlInput)];
+    if (!row) return;
+    if (input.value) drafts.set(row.name, input.value);
+    if (input === document.activeElement) {
+      focused = {
+        index: Number(input.dataset.urlInput),
+        start: input.selectionStart,
+        end: input.selectionEnd,
+      };
+    }
+  });
+  return { drafts, focused };
+}
+
+function restoreUrlDrafts(saved) {
+  if (!saved) return;
+  if (saved.drafts.size) {
+    dom.repoList.querySelectorAll("[data-url-input]").forEach((input) => {
+      const row = state.rows[Number(input.dataset.urlInput)];
+      if (!row) return;
+      const draft = saved.drafts.get(row.name);
+      if (draft !== undefined) input.value = draft;
+    });
+  }
+  if (!saved.focused) return;
+  const input = dom.repoList.querySelector(`[data-url-input="${saved.focused.index}"]`);
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  // `type="url"` suporta seleção; se o valor não bater, o navegador ajusta sozinho.
+  if (saved.focused.start !== null && input.setSelectionRange) {
+    try {
+      input.setSelectionRange(saved.focused.start, saved.focused.end);
+    } catch {
+      /* input sem seleção suportada: o foco já está restaurado */
+    }
+  }
+}
+
+/**
+ * Atualiza só o <tr> de uma linha, sem reconstruir o <tbody> inteiro.
+ *
+ * No modo em lote (`updateAll`) cada `doUpdate` chamava `render()` três vezes, e
+ * cada `render()` reescrevia as N linhas: 60 repositórios viravam ~180
+ * reconstruções completas do <tbody>, com a barra de rolagem da tabela pulando e
+ * o botão "Atualizar pendentes" perdendo e retomando o foco a cada passo.
+ *
+ * Só é usado no caminho `quiet`, em que todas as linhas do lote já estão
+ * mapeadas — portanto não há <tr class="map-row"> para remover, e o formulário de
+ * mapeamento das outras linhas fica intocado. Devolve false quando não dá para
+ * fazer de forma cirúrgica, e o chamador cai no render() completo.
+ */
+function renderRowInPlace(row, index) {
+  const current = dom.repoList.querySelector(`tr[data-row-index="${index}"]`);
+  if (!current || typeof current.replaceWith !== "function") return false;
+  const holder = document.createElement("tbody");
+  holder.innerHTML = renderRow(row, index);
+  const next = holder.firstElementChild;
+  if (!next) return false;
+  // a linha trocada leva junto os botões; se o foco estava nela, volta para ela
+  const hadFocus =
+    document.activeElement && current.contains && current.contains(document.activeElement);
+  current.replaceWith(next);
+  if (hadFocus) {
+    const same = next.querySelector(`[data-action][data-index="${index}"]`);
+    if (same) same.focus({ preventScroll: true });
+  }
+  return true;
+}
+
+/** render cirúrgico no caminho quiet, com queda para o render completo */
+function renderProgress(row, index) {
+  if (!renderRowInPlace(row, index)) render();
+}
+
 function render() {
+  // I5: error boundary — um row com formato inesperado do servidor derrubava
+  // a app inteira sem feedback. Agora a falha vira mensagem, não tela morta.
+  try {
+    renderUnsafe();
+  } catch (error) {
+    say(`Falha ao desenhar a lista: ${error.message}`, "danger", true);
+  }
+}
+
+function paintSteps(counts) {
+  // As 3 etapas do topo refletem o progresso real, não são decorativas.
+  const locate = $("step-locate");
+  const compare = $("step-compare");
+  const swap = $("step-swap");
+  if (locate) locate.dataset.done = state.base ? "true" : "false";
+  const checked = state.rows.some((row) => row.behind !== undefined && row.behind !== null || row.error);
+  if (compare) compare.dataset.done = checked ? "true" : "false";
+  if (swap) swap.dataset.done = state.base && counts.behind === 0 && counts.all > 0 ? "true" : "false";
+  document.querySelectorAll("[data-filter-link]").forEach((card) => {
+    if ("attentionCard" in card.dataset) {
+      // H4: o card soma sem-dono+erros; o link vai para a categoria não-vazia,
+      // senão o clique mostrava "Nenhum item neste filtro" com N > 0 no card.
+      const target = counts.unmapped > 0 ? "unmapped" : "error";
+      card.dataset.filterLink = target;
+      card.setAttribute("aria-label", target === "unmapped" ? "Ver itens sem dono" : "Ver itens com erro");
+    }
+    card.dataset.active = card.dataset.filterLink === state.filter ? "true" : "false";
+  });
+}
+
+function renderUnsafe() {
   const focus = focusedRepoAction();
+  const drafts = captureUrlDrafts();
   const rows = visibleRows();
   const counts = countRows();
   const order = new Map();
@@ -371,6 +511,8 @@ function render() {
     button.toggleAttribute("data-pressed", active);
     button.setAttribute("aria-checked", active ? "true" : "false");
   });
+  syncFilterTabIndex();
+  paintSteps(counts);
 
   let html;
   if (state.busy && !state.rows.length && state.scanning) {
@@ -383,8 +525,11 @@ function render() {
 
   dom.repoList.innerHTML = html;
   restoreRepoFocus(focus);
+  restoreUrlDrafts(drafts);
 
   dom.btnAll.disabled = state.busy || !state.base || counts.behind === 0;
+  const allLabel = $("btn-all-label");
+  if (allLabel) allLabel.textContent = counts.behind > 0 ? `Atualizar pendentes (${counts.behind})` : "Atualizar pendentes";
 }
 
 /* ------------------------------------------------------------------ theme */
@@ -482,10 +627,27 @@ function clearPathError() {
   dom.pathInput.closest("[data-component=text-input-v2]").removeAttribute("data-invalid");
 }
 
+function announce(message) {
+  // Espelha em #live-status (região viva permanente, fora das <section hidden>).
+  // Limpar e reescrever no frame seguinte é o que faz o leitor de tela reanunciar
+  // quando a mesma mensagem se repete — sem isso, "Ação cancelada." duas vezes
+  // seguidas só falaria uma.
+  dom.liveStatus.textContent = "";
+  const text = String(message);
+  if (REDUCED_MOTION.matches) {
+    dom.liveStatus.textContent = text;
+  } else {
+    requestAnimationFrame(() => {
+      dom.liveStatus.textContent = text;
+    });
+  }
+}
+
 function say(message, tone = "info", showToast = false) {
   dom.status.dataset.tone = tone;
   dom.statusText.textContent = message;
   dom.statusIcon.setAttribute("href", `#i-${TONE_ICON[tone] || "check"}`);
+  announce(message);
   if (showToast) toast(message, tone);
 }
 
@@ -509,8 +671,14 @@ function toast(message, tone = "info") {
 
   item.querySelector("[data-slot=toast-v2-close]").addEventListener("click", dismiss);
   dom.toastRegion.appendChild(item);
-  while (dom.toastRegion.children.length > 4) dom.toastRegion.firstElementChild.remove();
-  window.setTimeout(dismiss, 4600);
+  while (dom.toastRegion.children.length > MAX_TOASTS) dom.toastRegion.firstElementChild.remove();
+  // Não some sob o mouse: hover pausa, saída rearma com 2s.
+  let dismissTimer = window.setTimeout(dismiss, TOAST_LIFETIME_MS);
+  item.addEventListener("mouseenter", () => window.clearTimeout(dismissTimer));
+  item.addEventListener("mouseleave", () => {
+    window.clearTimeout(dismissTimer);
+    dismissTimer = window.setTimeout(dismiss, TOAST_HOVER_LIFETIME_MS);
+  });
 }
 
 function setBusy(value) {
@@ -521,6 +689,10 @@ function setBusy(value) {
   dom.syncDot.dataset.tone = value ? "busy" : "ok";
   dom.syncLabel.textContent = value ? "processando" : "pronto";
   dom.statusProgress.hidden = !value;
+  // aria-busy: esqueleto é só visual, sem isso leitor de tela não sabe que a tabela
+  // está carregando (WCAG 4.1.3). data-busy só baixa opacidade e bloqueia ponteiro.
+  const table = document.getElementById("repo-table");
+  if (table) table.setAttribute("aria-busy", value ? "true" : "false");
   // O render precisa acompanhar a virada de busy: sem isso nao aparece o
   // esqueleto durante a espera da rede (/api/scan tem timeout de 900 s) e,
   // pior, um scan que volte vazio deixa a tabela presa no skeleton.
@@ -651,6 +823,7 @@ async function doScan(options = {}) {
     return;
   }
   if (state.busy && options.allowBusy !== true) return;
+  cancelPendingScan();
   state.scanning = true;
   state.confirmRollback = null;
   state.confirmUpdate = null;
@@ -674,7 +847,7 @@ async function doScan(options = {}) {
     if (state.auto && mapped) await doCheck(true);
   } catch (error) {
     state.lastScanFailed = true;
-    // A falha não pode pisar no que o usuário já digitou depois desta tentativa.
+    // Não sobrescreve o que o usuário digitou após esta tentativa falhar.
     if (dom.pathInput.value.trim() === path) {
       dom.pathInput.value = state.base || "";
       storeSet("alldown.path", state.base || "");
@@ -731,9 +904,11 @@ async function doUpdate(name, quiet = false) {
   if (state.busy && !quiet) return false;
   const row = state.rows.find((item) => item.name === name);
   if (!row || !row.mapped || (!quiet && row.behind !== true)) return false;
+  const index = state.rows.indexOf(row);
+  const paint = () => (quiet ? renderProgress(row, index) : render());
   if (!quiet) setBusy(true);
   row.busy = true;
-  render();
+  paint();
   say(`Atualizando ${name}…`, "info");
   try {
     const result = await api("/api/update", {
@@ -747,7 +922,6 @@ async function doUpdate(name, quiet = false) {
     row.can_rollback = Boolean(result.backup);
     if (result.zip_only) row.zip_path = result.path;
     else row.local_dir = result.path;
-    render();
     const transfer = `${formatSize(result.download_bytes)} · ${formatSpeed(result.speed_bps)}`;
     const packageSize = `${formatSize(result.old_bytes)} → ${formatSize(result.new_bytes)}`;
     say(`${name} atualizado. ${transfer}. ${packageSize}.`, "success", true);
@@ -762,18 +936,18 @@ async function doUpdate(name, quiet = false) {
         row.local_sha = row.remote_sha;
         row.behind = false;
         row.error = null;
-        render();
+        paint();
         say(`${name} foi atualizado, mas a resposta se perdeu. O estado em disco confere.`, "success", true);
         return true;
       }
       if (verdict.known) {
         row.error = verdict.reason;
-        render();
+        paint();
         say(`Falha em ${name}: ${verdict.reason}`, "danger", true);
         return false;
       }
       row.error = error.message;
-      render();
+      paint();
       say(
         `${name}: deu tempo esgotado e não deu para confirmar o estado. Reexecute o check antes de tentar de novo.`,
         "warning",
@@ -785,8 +959,11 @@ async function doUpdate(name, quiet = false) {
     say(`Falha em ${name}: ${error.message}`, "danger", true);
     return false;
   } finally {
+    // O `finally` é quem faz o último paint: nos caminhos de sucesso e de erro
+    // removemos o render() do try/catch, que era seguido imediatamente por este
+    // aqui sem nada visível no meio — metade das reconstruções do <tbody>.
     row.busy = false;
-    render();
+    paint();
     if (!quiet) {
       setBusy(false);
       refreshLog();
@@ -861,7 +1038,7 @@ async function suggestRepo(index) {
     row.suggestions = result.items || [];
     render();
     say(
-      row.suggestions.length ? `${row.suggestions.length} sugestões encontradas.` : "Nenhuma sugestão encontrada.",
+      row.suggestions.length ? `${row.suggestions.length} sugestões encontradas.` : "Nenhuma sugestão encontrada. Cole a URL manualmente.",
       row.suggestions.length ? "success" : "warning",
       true
     );
@@ -904,6 +1081,7 @@ function paintSwitches() {
   paint(dom.btnAuto, dom.labelAuto, state.auto, "Ativa", "Pausada");
   paint(dom.btnMode, dom.labelMode, state.zipOnly, "Só ZIP", "Pastas");
   paint(dom.btnBackup, dom.labelBackup, state.backup, "Ativo", "Desligado");
+  paint(dom.btnShortcuts, dom.labelShortcuts, state.shortcuts, "Ligados", "Desligados");
 }
 
 async function postFlag(endpoint, payload, apply) {
@@ -935,33 +1113,59 @@ async function postFlag(endpoint, payload, apply) {
 function syncSidebarAccessibility() {
   const mobile = window.matchMedia ? window.matchMedia("(max-width: 767px)").matches : false;
   const open = dom.sidebar.dataset.open === "true";
+  // Em desktop o off-canvas não existe: um data-open="true" herdado de antes do
+  // resize faria o menu reaparecer aberto, cobrindo o conteúdo, ao voltar a mobile.
+  if (!mobile && open) {
+    dom.sidebar.dataset.open = "false";
+    dom.scrim.dataset.visible = "false";
+    sidebarMenuButton()?.setAttribute("aria-expanded", "false");
+    sidebarMenuButton()?.setAttribute("aria-label", "Abrir menu");
+    return;
+  }
   dom.sidebar.inert = Boolean(mobile && !open);
   dom.sidebar.setAttribute("aria-hidden", mobile && !open ? "true" : "false");
+}
+
+function sidebarMenuButton() {
+  return document.querySelector(".topbar__menu");
 }
 
 function toggleSidebar() {
   const open = dom.sidebar.dataset.open !== "true";
   dom.sidebar.dataset.open = open ? "true" : "false";
   dom.scrim.dataset.visible = open ? "true" : "false";
-  const menu = document.querySelector(".topbar__menu");
+  const menu = sidebarMenuButton();
   menu?.setAttribute("aria-expanded", open ? "true" : "false");
   menu?.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
   syncSidebarAccessibility();
+  // O drawer é um off-canvas: sem mover o foco para dentro, o Tab continua no
+  // conteúdo coberto e o leitor de tela nem sinaliza que o menu abriu.
+  if (open) {
+    const first = dom.sidebar.querySelector("button, a[href]");
+    if (first) first.focus();
+  }
 }
 
-function closeSidebar() {
+function closeSidebar(options = {}) {
   if (dom.sidebar.dataset.open !== "true") return;
   dom.sidebar.dataset.open = "false";
   dom.scrim.dataset.visible = "false";
-  const menu = document.querySelector(".topbar__menu");
+  const menu = sidebarMenuButton();
   menu?.setAttribute("aria-expanded", "false");
   menu?.setAttribute("aria-label", "Abrir menu");
   syncSidebarAccessibility();
+  // Devolve o foco ao gatilho — sem isso o foco fica num elemento que sumiu.
+  if (options.returnFocus !== false) menu?.focus();
 }
 
 function focusScan() {
+  // B12: sem setTimeout(40) frágil — o foco acontece no próximo frame,
+  // depois que setView tirou o hidden da Biblioteca.
   setView("library");
-  window.setTimeout(() => dom.pathInput.focus(), 40);
+  cancelPendingScan();
+  const focus = () => dom.pathInput.focus({ preventScroll: false });
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(focus);
+  else focus();
 }
 
 /* ------------------------------------------------------------ scroll thumb */
@@ -970,20 +1174,32 @@ function initScrollThumb() {
   const thumb = dom.pageThumb;
   if (!viewport || !thumb) return;
 
+  let pending = false;
+  let lastState = { top: -1, height: -1, visible: "" };
   const sync = () => {
-    const { scrollTop, scrollHeight, clientHeight } = viewport;
-    const scrollable = scrollHeight - clientHeight;
-    if (scrollable <= 2) {
-      thumb.dataset.visible = "false";
-      thumb.style.height = "0px";
-      return;
-    }
-    const ratio = clientHeight / scrollHeight;
-    const height = Math.max(24, Math.round(clientHeight * ratio));
-    const offset = Math.round((scrollTop / scrollable) * (clientHeight - height));
-    thumb.dataset.visible = "true";
-    thumb.style.height = `${height}px`;
-    thumb.style.transform = `translateY(${offset}px)`;
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
+      const scrollable = scrollHeight - clientHeight;
+      if (scrollable <= 2) {
+        if (lastState.visible !== "false") {
+          thumb.dataset.visible = "false";
+          thumb.style.height = "0px";
+          lastState = { top: -1, height: -1, visible: "false" };
+        }
+        return;
+      }
+      const ratio = clientHeight / scrollHeight;
+      const height = Math.max(24, Math.round(clientHeight * ratio));
+      const offset = Math.round((scrollTop / scrollable) * (clientHeight - height));
+      if (lastState.height === height && lastState.top === offset && lastState.visible === "true") return;
+      lastState = { top: offset, height, visible: "true" };
+      thumb.dataset.visible = "true";
+      thumb.style.height = `${height}px`;
+      thumb.style.transform = `translateY(${offset}px)`;
+    });
   };
 
   viewport.addEventListener("scroll", sync, { passive: true });
@@ -995,69 +1211,102 @@ function initScrollThumb() {
 /* ------------------------------------------------------------------ ações */
 const BUSY_ACTIONS = new Set(["check-row", "update-row", "rollback-row", "save-map", "suggest", "pick-suggestion", "refresh", "refresh-log"]);
 
+// B10: o timer de auto-scan (700ms) ficava pendente quando outro gatilho
+// disparava o scan (submit, atalho E, switch auto) — dois scans em sequência.
+function cancelPendingScan() {
+  if (state.pathTimer) {
+    window.clearTimeout(state.pathTimer);
+    state.pathTimer = null;
+  }
+}
+
+function resetFilterAndQuery() {
+  state.filter = "all";
+  state.query = "";
+  storeSet("alldown.filter", "all");
+  storeSet("alldown.query", "");
+  render();
+  writeHashState();
+}
+
+function refreshOrFocus() {
+  if (state.base) doCheck();
+  else focusScan();
+}
+
+function confirmUpdateRow(index) {
+  const row = state.rows[index];
+  if (row?.behind === true) {
+    if (state.confirmUpdate !== row.name) {
+      state.confirmUpdate = row.name;
+      state.confirmRollback = null;
+      render();
+      say(`Confirme a atualização de ${row.name}: clique no botão de novo.`, "warning", true);
+      return;
+    }
+    state.confirmUpdate = null;
+    doUpdate(row.name);
+  } else {
+    doCheck();
+  }
+}
+
+function confirmRollbackRow(index) {
+  const name = state.rows[index]?.name;
+  if (!name) return;
+  if (state.confirmRollback !== name) {
+    state.confirmRollback = name;
+    state.confirmUpdate = null;
+    render();
+    say(`Confirme a reversão de ${name}: clique no botão de novo.`, "warning", true);
+    return;
+  }
+  state.confirmRollback = null;
+  doRollback(name);
+}
+
+function saveMapFrom(index) {
+  const input = dom.repoList.querySelector(`[data-url-input="${index}"]`);
+  mapRepo(index, input?.value);
+}
+
+function pickSuggestion(index, element) {
+  const suggestion = state.rows[index]?.suggestions?.[Number(element.dataset.suggestion)];
+  if (suggestion) mapRepo(index, suggestion.url);
+}
+
+// B7: tabela em vez de cadeia de ifs — adicionar ação = adicionar entrada,
+// sem tocar no meio do despachante. Ações desconhecidas são ignoradas.
+const ACTIONS = {
+  "toggle-sidebar": () => toggleSidebar(),
+  "close-sidebar": () => closeSidebar(),
+  "toggle-theme": () => applyTheme(state.theme === "dark" ? "light" : "dark"),
+  "focus-scan": () => focusScan(),
+  "refresh-token": () => refreshToken(),
+  "refresh-log": () => refreshLog(),
+  "reset-filter": () => resetFilterAndQuery(),
+  "refresh": () => refreshOrFocus(),
+  "check-row": () => refreshOrFocus(),
+  "update-row": (index) => confirmUpdateRow(index),
+  "rollback-row": (index) => confirmRollbackRow(index),
+  "save-map": (index) => saveMapFrom(index),
+  "suggest": (index) => suggestRepo(index),
+  "pick-suggestion": (index, element) => pickSuggestion(index, element),
+};
+
 function handleAction(action, element) {
+  const handler = ACTIONS[action];
+  if (!handler) return;
   const index = Number(element.dataset.index);
   if (state.busy && BUSY_ACTIONS.has(action)) return;
   if (action !== "update-row" && state.confirmUpdate) {
     state.confirmUpdate = null;
     render();
   }
-
-  if (action === "toggle-sidebar") toggleSidebar();
-  if (action === "close-sidebar") closeSidebar();
-  if (action === "toggle-theme") applyTheme(state.theme === "dark" ? "light" : "dark");
-  if (action === "focus-scan") focusScan();
-  if (action === "refresh-token") refreshToken();
-  if (action === "refresh-log") refreshLog();
-  if (action === "reset-filter") {
-    state.filter = "all";
-    state.query = "";
-    storeSet("alldown.filter", "all");
-    storeSet("alldown.query", "");
-    render();
-    writeHashState();
-  }
-  if (action === "refresh" || action === "check-row") {
-    if (state.base) doCheck();
-    else focusScan();
-  }
-  if (action === "update-row") {
-    const row = state.rows[index];
-    if (row?.behind === true) {
-      if (state.confirmUpdate !== row.name) {
-        state.confirmUpdate = row.name;
-        state.confirmRollback = null;
-        render();
-        say(`Confirme a atualização de ${row.name}: clique no botão de novo.`, "warning", true);
-        return;
-      }
-      state.confirmUpdate = null;
-      doUpdate(row.name);
-    } else {
-      doCheck();
-    }
-  }
-  if (action === "rollback-row") {
-    const name = state.rows[index]?.name;
-    if (!name) return;
-    if (state.confirmRollback !== name) {
-      state.confirmRollback = name;
-      state.confirmUpdate = null;
-      render();
-      say(`Confirme a reversão de ${name}: clique no botão de novo.`, "warning", true);
-      return;
-    }
-    state.confirmRollback = null;
-    doRollback(name);
-  }
-  if (action === "save-map") {
-    const input = dom.repoList.querySelector(`[data-url-input="${index}"]`);
-    mapRepo(index, input?.value);
-  }
-  if (action === "suggest") suggestRepo(index);
-  if (action === "pick-suggestion") {
-    const suggestion = state.rows[index]?.suggestions?.[Number(element.dataset.suggestion)];
-    if (suggestion) mapRepo(index, suggestion.url);
+  try {
+    handler(index, element);
+  } catch (error) {
+    say(`Falha na ação: ${error.message}`, "danger", true);
   }
 }
 
@@ -1073,6 +1322,7 @@ function init() {
 
   applyTheme(storeGet("alldown.theme") || dom.root.dataset.colorScheme || "dark", false);
   state.auto = storeGet("alldown.auto") !== "0";
+  state.shortcuts = storeGet("alldown.shortcuts") !== "0";
   dom.pathInput.value = storeGet("alldown.path") || "";
 
   paintSwitches();
@@ -1080,6 +1330,7 @@ function init() {
   setBusy(false);
   setView(state.view);
   syncSidebarAccessibility();
+  registerEvents();
   initScrollThumb();
   refreshToken();
   refreshLog();
@@ -1090,149 +1341,216 @@ function init() {
     logTimer = setTimeout(() => {
       const active = document.visibilityState === "visible" && state.view === "activity";
       (active ? refreshLog() : Promise.resolve()).finally(scheduleLogRefresh);
-    }, 8000);
+    }, LOG_POLL_MS);
   }
   scheduleLogRefresh();
 
   if (state.auto && looksLikePath(dom.pathInput.value.trim())) window.setTimeout(doScan, 120);
 }
 
-$("form-path").addEventListener("submit", (event) => {
-  event.preventDefault();
-  window.clearTimeout(state.pathTimer);
-  doScan();
-});
 
-let searchTimer = null;
-dom.search.addEventListener("input", (event) => {
-  state.query = event.target.value;
-  storeSet("alldown.query", state.query);
-  window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(() => {
-    render();
-    writeHashState();
-  }, 150);
-});
-
-dom.filters.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-filter]");
-  if (button) setFilter(button.dataset.filter);
-});
-
-dom.filters.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
-  const current = buttons.indexOf(document.activeElement);
-  if (current === -1) return;
-  event.preventDefault();
-  const next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
-  buttons[next].focus();
-  setFilter(buttons[next].dataset.filter);
-});
-
-dom.btnCheck.addEventListener("click", () => doCheck());
-dom.btnAll.addEventListener("click", updateAll);
-
-dom.btnAuto.addEventListener("click", () => {
-  state.auto = !state.auto;
-  storeSet("alldown.auto", state.auto ? "1" : "0");
-  paintSwitches();
-  say(state.auto ? "Detecção automática ativada." : "Detecção automática pausada.", "info", true);
-  const value = dom.pathInput.value.trim();
-  if (state.auto && looksLikePath(value) && value !== state.base) doScan();
-});
-
-dom.btnMode.addEventListener("click", () => {
-  const next = !state.zipOnly;
-  postFlag("/api/mode", { zip_only: next }, (result) => {
-    state.zipOnly = Boolean(result.zip_only);
-    say(state.zipOnly ? "Modo somente ZIP ativado." : "Modo pasta ativado.", "success", true);
+/* Roving tabindex: o APG exige UM tab stop no radiogroup, não cinco. Só o filtro
+   marcado é tabbável; as setas movem foco e seleção, como manda o padrão. */
+function syncFilterTabIndex() {
+  dom.filters.querySelectorAll("[data-filter]").forEach((button) => {
+    const checked = button.getAttribute("aria-checked") === "true";
+    button.setAttribute("tabindex", checked ? "0" : "-1");
   });
-});
+}
 
-dom.btnBackup.addEventListener("click", () => {
-  const next = !state.backup;
-  postFlag("/api/backup", { backup: next }, (result) => {
-    state.backup = Boolean(result.backup);
-    say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
-  });
-});
-
-dom.pathInput.addEventListener("input", () => {
-  clearPathError();
+function validatePathInput() {
+  // Valida no `input`, não no `blur`: no blur o foco já saiu do campo, então o
+  // erro aparecia exatamente no caso que o leitor de tela não consegue anunciar
+  // (WCAG 3.3.1 / 4.1.3). Aqui o foco ainda está no input.
   const value = dom.pathInput.value.trim();
-  if (!state.auto || !looksLikePath(value)) return;
-  if (value === state.base && !state.lastScanFailed) return;
-  window.clearTimeout(state.pathTimer);
-  state.pathTimer = window.setTimeout(doScan, 700);
-});
-
-dom.pathInput.addEventListener("blur", () => {
-  const value = dom.pathInput.value.trim();
-  if (!value || looksLikePath(value)) return;
+  if (!value || looksLikePath(value)) {
+    clearPathError();
+    return true;
+  }
   setPathError("O caminho deve começar com / ou ~");
-  say("Caminho inválido: deve começar com / ou ~", "warning", true);
-});
+  return false;
+}
 
-dom.repoList.addEventListener("click", (event) => {
-  const element = event.target.closest("[data-action]");
-  if (!element) return;
-  event.stopPropagation();
-  handleAction(element.dataset.action, element);
-});
+/* B5: todos os listeners nascem em registerEvents(), não espalhados no topo
+   do módulo. Antes metade era registrada fora de init() — inicialização
+   partida em dois lugares. */
+let searchTimer = null;
 
-document.addEventListener("click", (event) => {
-  const viewButton = event.target.closest("[data-view]");
-  if (viewButton) {
-    setView(viewButton.dataset.view);
-    return;
-  }
-  const actionButton = event.target.closest("[data-action]");
-  if (actionButton && !dom.repoList.contains(actionButton)) handleAction(actionButton.dataset.action, actionButton);
-});
-
-window.addEventListener("resize", syncSidebarAccessibility);
-window.addEventListener("hashchange", applyHashState);
-
-document.querySelector(".skip-link")?.addEventListener("click", (event) => {
-  event.preventDefault();
-  const viewport = dom.main.querySelector("[data-slot=scroll-view-viewport]");
-  viewport?.scrollTo({ top: 0 });
-  dom.main.focus({ preventScroll: true });
-});
-window.addEventListener("beforeunload", (event) => {
-  const dirty = Array.from(dom.repoList.querySelectorAll("[data-url-input]")).some(
-    (input) => String(input.value || "").trim() !== ""
-  );
-  if (dirty) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    if (state.confirmRollback || state.confirmUpdate) {
-      state.confirmRollback = null;
-      state.confirmUpdate = null;
-      render();
-      say("Ação cancelada.", "info");
-    }
-    closeSidebar();
-    return;
-  }
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
-  const tag = event.target?.tagName || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  const key = event.key.toLowerCase();
-  if (key === "e") {
+function registerEvents() {
+  $("form-path").addEventListener("submit", (event) => {
     event.preventDefault();
     doScan();
-  }
-  if (key === "c") {
+  });
+
+  dom.search.addEventListener("input", (event) => {
+    state.query = event.target.value;
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      storeSet("alldown.query", state.query);
+      render();
+      writeHashState();
+    }, SEARCH_DEBOUNCE_MS);
+  });
+
+  dom.filters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-filter]");
+    if (button) setFilter(button.dataset.filter);
+  });
+
+  dom.filters.addEventListener("keydown", (event) => {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    const buttons = Array.from(dom.filters.querySelectorAll("[data-filter]"));
+    const current = buttons.indexOf(document.activeElement);
+    if (current === -1) return;
     event.preventDefault();
-    doCheck();
-  }
-});
+    let next;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = buttons.length - 1;
+    else next = (current + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next].focus();
+    setFilter(buttons[next].dataset.filter);
+  });
+
+  dom.btnCheck.addEventListener("click", () => doCheck());
+  dom.btnAll.addEventListener("click", updateAll);
+
+  dom.btnAuto.addEventListener("click", () => {
+    state.auto = !state.auto;
+    storeSet("alldown.auto", state.auto ? "1" : "0");
+    paintSwitches();
+    say(state.auto ? "Detecção automática ativada." : "Detecção automática pausada.", "info", true);
+    const value = dom.pathInput.value.trim();
+    if (state.auto && looksLikePath(value) && value !== state.base) doScan();
+  });
+
+  dom.btnMode.addEventListener("click", () => {
+    const next = !state.zipOnly;
+    postFlag("/api/mode", { zip_only: next }, (result) => {
+      state.zipOnly = Boolean(result.zip_only);
+      say(state.zipOnly ? "Modo somente ZIP ativado." : "Modo pasta ativado.", "success", true);
+    });
+  });
+
+  dom.btnBackup.addEventListener("click", () => {
+    const next = !state.backup;
+    postFlag("/api/backup", { backup: next }, (result) => {
+      state.backup = Boolean(result.backup);
+      say(state.backup ? "Backup ativado." : "Backup desligado.", "success", true);
+    });
+  });
+
+  // Preferência só do cliente: não vai ao servidor (WCAG 2.1.4 exige forma de
+  // desativar atalho de tecla única).
+  dom.btnShortcuts.addEventListener("click", () => {
+    state.shortcuts = !state.shortcuts;
+    storeSet("alldown.shortcuts", state.shortcuts ? "1" : "0");
+    paintSwitches();
+    say(
+      state.shortcuts
+        ? "Atalhos de teclado ligados: E escaneia, C checa."
+        : "Atalhos de teclado desligados.",
+      "info",
+      true
+    );
+  });
+
+  dom.pathInput.addEventListener("input", () => {
+    const valid = validatePathInput();
+    const value = dom.pathInput.value.trim();
+    if (!valid) {
+      say("Caminho inválido: deve começar com / ou ~", "warning", true);
+      return;
+    }
+    if (!state.auto || !looksLikePath(value)) return;
+    if (value === state.base && !state.lastScanFailed) return;
+    window.clearTimeout(state.pathTimer);
+    state.pathTimer = window.setTimeout(doScan, PATH_AUTO_SCAN_DELAY_MS);
+  });
+
+  dom.pathInput.addEventListener("blur", () => {
+    // Só cobre autofill do navegador, que não dispara `input`. Não anuncia de novo:
+    // se o erro já está visível, `role="alert"` já o comunicou.
+    const value = dom.pathInput.value.trim();
+    if (!value || looksLikePath(value) || !dom.pathError.hidden) return;
+    setPathError("O caminho deve começar com / ou ~");
+  });
+
+  // B8/B9: um único despachante de clique. Antes havia stopPropagation no
+  // repoList + contains() no global — redundância que mascarava bugs — e o
+  // listener global fazia 2× closest() em todo clique da página. Agora: guarda
+  // barata por alvo, um closest() para view/action/filter-link.
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const target = event.target.closest("[data-view],[data-action],[data-filter-link]");
+    if (!target) return;
+    if (target.dataset.view) {
+      setView(target.dataset.view);
+      return;
+    }
+    if (target.dataset.filterLink) {
+      setFilter(target.dataset.filterLink);
+      return;
+    }
+    if (target.dataset.action) handleAction(target.dataset.action, target);
+  });
+
+  // Enter no formulário de mapeamento salva (antes só o clique em Salvar).
+  // O submit é delegado: as linhas são recriadas a cada render.
+  dom.repoList.addEventListener("submit", (event) => {
+    const form = event.target.closest?.("[data-map-form]");
+    if (!form || !dom.repoList.contains(form)) return;
+    event.preventDefault();
+    saveMapFrom(Number(form.dataset.mapForm));
+  });
+
+  window.addEventListener("resize", syncSidebarAccessibility);
+  window.addEventListener("hashchange", applyHashState);
+
+  document.querySelector(".skip-link")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const viewport = dom.main.querySelector("[data-slot=scroll-view-viewport]");
+    viewport?.scrollTo({ top: 0 });
+    dom.main.focus({ preventScroll: true });
+  });
+  window.addEventListener("beforeunload", (event) => {
+    const dirty = Array.from(dom.repoList.querySelectorAll("[data-url-input]")).some(
+      (input) => String(input.value || "").trim() !== ""
+    );
+    if (dirty) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (state.confirmRollback || state.confirmUpdate) {
+        state.confirmRollback = null;
+        state.confirmUpdate = null;
+        render();
+        say("Ação cancelada.", "info");
+      }
+      closeSidebar();
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.shiftKey) return;
+    if (!state.shortcuts) return;
+    if (event.repeat) return; // segurar a tecla nao deve repetir a operacao
+    const tag = event.target?.tagName || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (event.target?.isContentEditable) return;
+    const key = event.key.toLowerCase();
+    if (key === "e") {
+      event.preventDefault();
+      doScan();
+    }
+    if (key === "c") {
+      event.preventDefault();
+      doCheck();
+    }
+  });
+}
 
 init();

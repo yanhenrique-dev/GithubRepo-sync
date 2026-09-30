@@ -5,18 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta id="theme-color" name="theme-color" content="#161616">
 <meta name="description" content="RepoRefresh — bancada local para manter cópias GitHub fiéis ao commit certo.">
+<meta name="color-scheme" content="dark light">
 <title>RepoRefresh — bancada local</title>
 <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32">
 <link rel="icon" type="image/png" href="/static/icon-32.png" sizes="32x32">
 <link rel="icon" type="image/png" href="/static/icon-16.png" sizes="16x16">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
-<link rel="preload" href="/static/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/static/fonts/inter-500.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/static/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/tokens.css?v=1" fetchpriority="high">
-<link rel="stylesheet" href="/static/components.css?v=1" fetchpriority="high">
-<link rel="stylesheet" href="/static/shell.css?v=1">
-<script src="/static/theme.js"></script>
+<link rel="preload" href="/static/fonts/inter-400.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-500.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-600.woff2?v=3" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/app.js?v=3" as="script">
+<link rel="stylesheet" href="/static/tokens.css?v=3" fetchpriority="high">
+<link rel="stylesheet" href="/static/components.css?v=3" fetchpriority="high">
+<link rel="stylesheet" href="/static/shell.css?v=3">
+<script src="/static/theme.js?v=3"></script>
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -72,7 +74,7 @@
 
     <div class="sidebar__spacer"></div>
 
-    <button class="connection-card" type="button" data-action="refresh-token" aria-live="polite" aria-label="GitHub API — revalidar cota" title="Revalidar cota da API">
+    <button class="connection-card" type="button" data-action="refresh-token" aria-label="GitHub API — revalidar cota" title="Revalidar cota da API">
       <span class="status-dot" id="token-dot" data-tone="warn"></span>
       <span class="connection-card__copy">
         <small>GitHub API</small>
@@ -109,11 +111,11 @@
       <nav class="breadcrumbs" aria-label="Trilha de navegação">
         <span translate="no">RepoRefresh</span>
         <svg class="icon" data-size="xs" aria-hidden="true" focusable="false"><use href="#i-chevron"></use></svg>
-        <strong id="view-title">Biblioteca</strong>
+        <strong id="view-title" aria-current="page">Biblioteca</strong>
       </nav>
 
       <div class="topbar__actions">
-        <span class="sync-state" id="sync-state" title="Status da operação" aria-live="polite">
+        <span class="sync-state" id="sync-state" title="Status da operação">
           <span class="status-dot" id="sync-dot" data-tone="ok"></span>
           <span id="sync-label">pronto</span>
         </span>
@@ -137,18 +139,24 @@
     <main class="page-shell" id="conteudo" data-component="scroll-view" tabindex="-1">
       <div class="page-shell__inner" data-slot="scroll-view-viewport" tabindex="0" aria-label="Conteúdo da página">
 
+        <!-- Região viva permanente: precisa existir ANTES do texto e ficar FORA das
+             <section hidden>, senão nada é anunciado em Atividade e Preferências
+             (WCAG 4.1.3). say() espelha a #status — que é só a linha visível da
+             Biblioteca — aqui. aria-atomic evita anúncio parcial. -->
+        <p class="sr-only" id="live-status" role="status" aria-live="polite" aria-atomic="true"></p>
+
         <!-- ============================ BIBLIOTECA ============================ -->
         <section class="page" data-page="library" id="library-view">
 
           <header class="page-header">
             <h1 class="page-header__title">Biblioteca</h1>
-            <p class="page-header__description">Escolha uma pasta, confirme a identidade de cada repositório e troque apenas o conteúdo verificado — sempre com backup e reversão.</p>
+            <p class="page-header__description">Escolha uma pasta, confirme cada repositório e troque o conteúdo verificado — sempre com backup e reversão.</p>
           </header>
 
           <section class="steps" aria-label="Etapas da operação">
-            <div class="step"><span class="step__index">01</span><span class="step__title">Localizar</span><span class="step__body">pastas e arquivos ZIP</span></div>
-            <div class="step"><span class="step__index">02</span><span class="step__title">Comparar</span><span class="step__body">SHA local com remoto</span></div>
-            <div class="step"><span class="step__index">03</span><span class="step__title">Trocar</span><span class="step__body">com backup e reversão</span></div>
+            <div class="step" id="step-locate"><span class="step__index">01</span><span class="step__title">Localizar</span><span class="step__body">pastas e arquivos ZIP</span></div>
+            <div class="step" id="step-compare"><span class="step__index">02</span><span class="step__title">Comparar</span><span class="step__body">SHA local com remoto</span></div>
+            <div class="step" id="step-swap"><span class="step__index">03</span><span class="step__title">Trocar</span><span class="step__body">com backup e reversão</span></div>
           </section>
 
           <section data-component="card" data-padding="large" aria-labelledby="path-title">
@@ -173,7 +181,7 @@
                   <span>Escanear</span>
                 </button>
               </div>
-              <p class="field-error" id="path-error" hidden></p>
+              <p class="field-error" id="path-error" role="alert" hidden></p>
               <div class="scan-form__actions">
                 <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="small" type="button" id="btn-check" data-icon>
                   <svg class="icon" data-slot="icon" data-size="small" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg>
@@ -181,23 +189,25 @@
                 </button>
                 <button class="button-v2" data-component="button-v2" data-variant="neutral" data-size="small" type="button" id="btn-all" data-icon>
                   <svg class="icon" data-slot="icon" data-size="small" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
-                  <span>Atualizar pendentes</span>
+                  <span id="btn-all-label">Atualizar pendentes</span>
                 </button>
               </div>
             </form>
           </section>
 
-          <div class="status-line" id="status" data-tone="info" role="status" aria-live="polite">
+          <!-- Anúncio vai para #live-status (permanente, fora das views hidden).
+               aria-live aqui causaria anúncio duplo na view Biblioteca. -->
+          <div class="status-line" id="status" data-tone="info">
             <svg class="icon" data-size="small" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg>
             <span id="status-text">Cole uma pasta para começar.</span>
             <span class="status-line__progress" data-component="progress-bar" data-state="indeterminate" id="status-progress" hidden><span data-slot="progress-bar-fill"></span></span>
           </div>
 
           <section class="summary-grid" aria-label="Resumo da operação">
-            <div class="stat-card"><span class="stat-card__label">Itens detectados</span><span class="stat-card__value" id="sum-total">0</span><span class="stat-card__hint">pastas + arquivos ZIP</span></div>
-            <div class="stat-card" data-tone="success"><span class="stat-card__label">Sincronizados</span><span class="stat-card__value" id="sum-ready">0</span><span class="stat-card__hint">commit local verificado</span></div>
-            <div class="stat-card" data-tone="warning"><span class="stat-card__label">Para atualizar</span><span class="stat-card__value" id="sum-behind">0</span><span class="stat-card__hint">commits disponíveis</span></div>
-            <div class="stat-card" data-tone="info"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></div>
+            <button type="button" class="stat-card" data-filter-link="all" aria-label="Ver todos os itens"><span class="stat-card__label">Itens detectados</span><span class="stat-card__value" id="sum-total">0</span><span class="stat-card__hint">pastas + arquivos ZIP</span></button>
+            <button type="button" class="stat-card" data-tone="success" data-filter-link="ready" aria-label="Ver sincronizados"><span class="stat-card__label">Sincronizados</span><span class="stat-card__value" id="sum-ready">0</span><span class="stat-card__hint">commit local verificado</span></button>
+            <button type="button" class="stat-card" data-tone="warning" data-filter-link="behind" aria-label="Ver pendentes de atualização"><span class="stat-card__label">Para atualizar</span><span class="stat-card__value" id="sum-behind">0</span><span class="stat-card__hint">commits disponíveis</span></button>
+            <button type="button" class="stat-card" data-tone="info" data-filter-link="unmapped" data-attention-card aria-label="Ver itens para revisão"><span class="stat-card__label">Revisão ou erro</span><span class="stat-card__value" id="sum-attention">0</span><span class="stat-card__hint">sem vínculo ou erro</span></button>
           </section>
 
           <section data-component="card" aria-labelledby="library-title">
@@ -217,17 +227,20 @@
               </label>
 
               <div data-component="segmented-control-v2" id="filters" role="radiogroup" aria-label="Filtrar repositórios">
-                <button type="button" role="radio" aria-checked="true" data-filter="all" data-pressed data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Todos</span><span data-slot="segmented-control-v2-item-count" id="c-all">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="behind" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Atualizar</span><span data-slot="segmented-control-v2-item-count" id="c-behind">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="ready" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Em dia</span><span data-slot="segmented-control-v2-item-count" id="c-ok">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="unmapped" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Sem dono</span><span data-slot="segmented-control-v2-item-count" id="c-unmapped">0</span></span></button>
-                <button type="button" role="radio" aria-checked="false" data-filter="error" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Erros</span><span data-slot="segmented-control-v2-item-count" id="c-error">0</span></span></button>
+                <button type="button" role="radio" aria-checked="true" data-filter="all" tabindex="0" data-pressed data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Todos</span><span data-slot="segmented-control-v2-item-count" id="c-all">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="behind" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Atualizar</span><span data-slot="segmented-control-v2-item-count" id="c-behind">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="ready" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Em dia</span><span data-slot="segmented-control-v2-item-count" id="c-ok">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="unmapped" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Sem dono</span><span data-slot="segmented-control-v2-item-count" id="c-unmapped">0</span></span></button>
+                <button type="button" role="radio" aria-checked="false" data-filter="error" tabindex="-1" data-slot="segmented-control-v2-item"><span data-slot="segmented-control-v2-item-label"><span data-slot="segmented-control-v2-item-text">Erros</span><span data-slot="segmented-control-v2-item-count" id="c-error">0</span></span></button>
               </div>
             </div>
 
             <div data-component="divider-v2"></div>
 
-            <div class="table-scroll">
+            <!-- tabindex + role=region: sem isso a tabela de 7 colunas só rola
+                 horizontalmente por mouse (WCAG 2.1.1). O app já faz o mesmo em
+                 #page-shell__inner e no <pre id="log">. -->
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de repositórios, rolagem horizontal">
               <table data-component="data-table" id="repo-table">
                 <caption class="sr-only">Repositórios detectados na pasta em serviço</caption>
                 <thead>
@@ -251,7 +264,7 @@
         <section class="page" data-page="activity" id="activity-view" hidden>
           <header class="page-header">
             <h1 class="page-header__title">Atividade</h1>
-            <p class="page-header__description">Registro contínuo de scans, comparações, trocas e reversões executadas nesta máquina.</p>
+            <p class="page-header__description">Scans, comparações, trocas e reversões executadas nesta máquina.</p>
           </header>
 
           <section data-component="card" aria-labelledby="log-title">
@@ -274,7 +287,7 @@
         <section class="page" data-page="settings" id="settings-view" hidden>
           <header class="page-header">
             <h1 class="page-header__title">Preferências</h1>
-            <p class="page-header__description">Defina como o RepoRefresh trata atualização, backup e verificação automática.</p>
+            <p class="page-header__description">Atualização, backup e verificação automática.</p>
           </header>
 
           <section data-component="card" aria-label="Ajustes da bancada">
@@ -288,7 +301,7 @@
                   <button data-component="switch" data-console-toggle-size="md" data-checked type="button" id="btn-auto" role="switch" aria-checked="true" aria-label="Detecção automática">
                     <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
                   </button>
-                  <span data-component="tag" id="label-auto" aria-live="polite">Ativa</span>
+                  <span data-component="tag" id="label-auto">Ativa</span>
                 </div>
               </div>
 
@@ -301,7 +314,7 @@
                   <button data-component="switch" data-console-toggle-size="md" type="button" id="btn-mode" role="switch" aria-checked="false" aria-label="Modo somente ZIP">
                     <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
                   </button>
-                  <span data-component="tag" id="label-mode" aria-live="polite">Pastas</span>
+                  <span data-component="tag" id="label-mode">Pastas</span>
                 </div>
               </div>
 
@@ -314,7 +327,20 @@
                   <button data-component="switch" data-console-toggle-size="md" data-checked type="button" id="btn-backup" role="switch" aria-checked="true" aria-label="Backup antes de trocar">
                     <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
                   </button>
-                  <span data-component="tag" id="label-backup" aria-live="polite">Ativo</span>
+                  <span data-component="tag" id="label-backup">Ativo</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row__copy">
+                  <span class="setting-row__title">Atalhos de teclado</span>
+                  <span class="setting-row__body">Teclas <code>E</code> (escanear) e <code>C</code> (checar) sem modificador. Desligue se preferir não acionar operações pelo teclado.</span>
+                </div>
+                <div class="setting-row__control">
+                  <button data-component="switch" data-console-toggle-size="md" data-checked type="button" id="btn-shortcuts" role="switch" aria-checked="true" aria-label="Atalhos de teclado">
+                    <span data-slot="switch-control"><span data-slot="switch-thumb"></span></span>
+                  </button>
+                  <span data-component="tag" id="label-shortcuts">Ligados</span>
                 </div>
               </div>
             </div>
@@ -337,6 +363,6 @@
 
 <div data-component="toast-region-v2" id="toast-region" role="region" aria-label="Notificações"></div>
 
-<script src="/static/app.js?v=2" defer></script>
+<script src="/static/app.js?v=3" defer></script>
 </body>
 </html>

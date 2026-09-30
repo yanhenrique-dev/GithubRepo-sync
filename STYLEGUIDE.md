@@ -11,11 +11,16 @@ Nenhum valor foi inventado. Se não está no CSS-fonte, não está aqui.
 | Arquivo | Conteúdo |
 |---|---|
 | `static/tokens.css` | Rampas, alfa, cores de estado, semânticos light/dark, elevação, raios, tipografia, movimento |
-| `static/components.css` | Primitives com `data-component` / `data-slot` |
+| `static/components.css` | Primitives em uso no caminho crítico (`button`, `input`, `switch`, `tag`, `segmented`, `avatar`, `card`, `toast`, `data-table`, `scroll-view`, …) |
+| `static/components-optional.css` | Primitives fora do caminho crítico (`textarea`, `select`, `checkbox`, `tooltip`, `drawer`, `dialog`, `menu`) — **não** carregado por padrão, ~7KB gzip poupados |
 | `static/shell.css` | Grid do app, sidebar, header, page shell, as três telas |
+| `static/theme.js` | Aplica o tema antes da primeira pintura (bloqueante, por causa da CSP) |
+| `static/index.html` | Markup das três telas e a ordem de carga |
 | `STYLEGUIDE.md` | Este documento |
 
-Ordem de carga no HTML: `tokens.css` → `components.css` → `shell.css`.
+Ordem de carga no HTML: `theme.js` → `tokens.css` → `components.css` → `shell.css`.
+Versão única `?v=3` nos quatro assets + `theme.js` (antes `?v=1`/`?v=2`/sem versão,
+sempre inconsistente). `Cache-Control: immutable` no servidor para `?v=`.
 
 ## Convenção de atributos
 
@@ -52,25 +57,49 @@ Estados de interação são dirigidos por `:hover` **e** por `[data-state=…]`,
 | `--v2-background-bg-accent` | `#3b5cf6` | `#3b5cf6` |
 | `--v2-text-text-base` | `#161616` | `#fafafa` |
 | `--v2-text-text-muted` | `#5c5c5c` | `#aeaeae` |
-| `--v2-text-text-faint` | `#808080` | `#808080` |
+| `--v2-text-text-faint` | `#6b6b6b` | `#999999` |
 | `--v2-text-text-accent` | `#3b5cf6` | `#a2bcff` |
 | `--v2-icon-icon-base` | `#3a3a3a` | `#dbdbdb` |
 | `--v2-icon-icon-muted` | `#808080` | `#808080` |
 | `--v2-border-border-muted` | `rgba(0,0,0,.08)` | `rgba(255,255,255,.08)` |
 | `--v2-border-border-base` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.10)` |
 | `--v2-border-border-strong` | `rgba(0,0,0,.20)` | `rgba(255,255,255,.20)` |
-| `--v2-border-border-focus` | `#7698fd` | `#7698fd` |
+| `--v2-border-border-focus` | `#3250df` | `#c3d4fd` |
 | `--v2-overlay-simple-overlay-hover` | `rgba(0,0,0,.04)` | `rgba(255,255,255,.06)` |
 | `--v2-overlay-simple-overlay-pressed` | `rgba(0,0,0,.08)` | `rgba(255,255,255,.10)` |
 | `--v2-overlay-simple-overlay-scrim` | `rgba(0,0,0,.4)` | `rgba(0,0,0,.6)` |
-| `--v2-state-bg-success` / `fg` | `#e7f9ea` / `#198b43` | `#14361d` / `#6bd586` |
-| `--v2-state-bg-warning` / `fg` | `#fefaec` / `#cb9f34` | `#4b4025` / `#f2cf76` |
+| `--v2-state-bg-success` / `fg` | `#e7f9ea` / `#1d783c` | `#14361d` / `#6bd586` |
+| `--v2-state-bg-warning` / `fg` | `#fefaec` / `#68552b` | `#4b4025` / `#f2cf76` |
 | `--v2-state-bg-danger` / `fg` | `#fceceb` / `#b82d35` | `#461516` / `#f17471` |
 | `--v2-state-bg-info` / `fg` | `#ecf1fe` / `#2c47c8` | `#1b2852` / `#7698fd` |
 
-O tema vive em `[data-color-scheme="light" | "dark"]` no `<html>`. Um script inline
-antes da primeira pintura lê `localStorage["alldown.theme"]` e cai para
-`prefers-color-scheme` — não há flash.
+O tema vive em `[data-color-scheme="light" | "dark"]` no `<html>`. O arquivo
+`static/theme.js` roda **externo e bloqueante** no `<head>` (sem `defer`), antes da
+primeira pintura: lê `localStorage["alldown.theme"]` e cai para `prefers-color-scheme`
+— não há flash.
+
+> **Não mova isso para um `<script>` inline.** A CSP (`app.py`) é
+> `script-src 'self'` sem `unsafe-inline`; um script inline é bloqueado e o tema passa
+> a depender de `prefers-color-scheme`, ruining a escolha persistida. É a razão de
+> `theme.js` ser um arquivo separado.
+
+### Três desvios conscientes da fonte
+
+Os tokens abaixo **não** são os valores do console original. Cada um foi alterado
+para fechar contraste (WCAG 1.4.3 texto, 1.4.11 não-texto) e o valor medido está
+registrado aqui — a fonte original **não** é a autoridade para estes:
+
+| Token | Origem |light | dark | Razão |
+|---|---|---|---|---|
+| `--v2-text-text-faint` | `#808080` | `#6b6b6b` | `#999999` | origem passava em 3.6:1 como texto |
+| `--v2-state-fg-warning` | `#cb9f34` | `#68552b` | — | origem a 2.35:1 no bg |
+| `--v2-state-fg-success` | `#198b43` | `#1d783c` | — | origem a 3.97:1 na tag de 11px |
+| `--v2-border-border-focus` | `#7698fd` | `#3250df` | `#c3d4fd` | origem a 2,7:1 em toda superfície clara |
+
+O anel de foco é desenhado com `outline-offset`, ou seja **fora** do preenchimento do
+elemento. O fundo que importa é o da superfície onde o anel cai, não o do botão
+`contrast` — por isso `blue-700` funciona no light despite de o `bg-contrast` ser
+escuro.
 
 ## Elevação
 
@@ -125,24 +154,24 @@ neste sistema. Monospace: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas
 | `button-v2` | `small` 24 · `normal` 28 · `large` 32 | `neutral` `contrast` `outline` `ghost` `ghost-muted` `danger` `warning` `loading` |
 | `icon-button-v2` | `small` 20 · `normal` 24 · `large` 28 | `neutral` `contrast` `ghost` `ghost-muted` |
 | `text-input-v2` | 28 (32 `large`) | — + `data-invalid` `data-disabled` `data-numeric` `data-leading-icon` |
-| `textarea-v2` | `min-height: 80px`, `resize: vertical` | idem |
-| `select-v2` | 28 | idem |
-| `checkbox-v2` | `16×16`, raio `4px` | `data-checked` `data-invalid` `data-disabled` |
+| `textarea-v2` | `min-height: 80px`, `resize: vertical` | idem | **opcional** |
+| `select-v2` | 28 | idem | **opcional** |
+| `checkbox-v2` | `16×16`, raio `4px` | `data-checked` `data-invalid` `data-disabled` | **opcional** |
 | `switch` | `data-console-toggle-size="md"` → 32×20, thumb 16 | `data-checked` |
 | `tag` | `16px`, raio `2px` | `accent` `success` `warning` `danger` `info` `mono` + `data-high-contrast` |
 | `segmented-control-v2` | 28, `box-shadow: 0 0 0 .5px` | `data-pressed` no item |
 | `avatar-v2` | 16 / 20 / 24 / 28 | `data-tone` = 10 cores + `data-kind="org"` |
-| `tooltip-v2` | `5px 6px`, raio `4px`, 11/12 | — |
+| `tooltip-v2` | `5px 6px`, raio `4px`, 11/12 | — | **opcional** |
 | `toast-v2` | 320px, raio `8px`, grid `1fr 20px` | `data-tone` |
-| `drawer` | `min(100vw, 40rem)` | `data-closed` no painel |
-| `dialog-v2` | 480 (`large` 640), raio `12px` | `data-size` |
+| `drawer` | `min(100vw, 40rem)` | `data-closed` no painel | **opcional** |
+| `dialog-v2` | 480 (`large` 640), raio `12px` | `data-size` | **opcional** |
 | `data-table` | header 32 · row 40 | `data-align="end"` + `tabular-nums` |
 | `card` | padding 16 (`large` 20) | `data-interactive` |
 | `scroll-view` | thumb 4px, trilho 12px | `data-visible` |
 | `progress-bar` | 4px | `data-variant` `data-state="indeterminate"` |
 | `empty-state` / `skeleton` | — | `data-shape` no skeleton |
 | `divider-v2` | `1px` com `scaleY(.5)` | `data-orientation` |
-| `menu-v2-content` / `menu-v2-item` | item 28, raio `4px` | `data-checked` `data-highlighted` |
+| `menu-v2-content` / `menu-v2-item` | item 28, raio `4px` | `data-checked` `data-highlighted` | **opcional** |
 | `field-v2` / `inline-input-v2` / `loader-v2` | — | — |
 
 ## Movimento
@@ -206,13 +235,21 @@ O console esconde a scrollbar nativa e desenha a dele. O mesmo vale aqui
 11. Toda tabela numérica alinhada à direita com `tabular-nums`.
 12. Zero estilo inline, zero `any`, só tokens nos valores.
 
-`@media (forced-colors: active)` é a única exceção à regra 3: troca as bordas de 1px porque
-o Windows High Contrast descarta sombras.
+Duas exceções nomeadas, ambas funcionais:
+
+- **Regra 3** — `@media (forced-colors: active)`: troca as bordas de 1px porque o
+  Windows High Contrast descarta sombras.
+- **Regra 12** — o thumb do scroll decorativo (`app.js`, `initScrollThumb`) escreve
+  `style.height` e `style.transform`inline. São valores de geometria que só o JS
+  conhece depois do layout; não são tema.
+
+Toda outra superfície de cor e tamanho deve continuar vindo de token.
 
 ## Verificação
 
 ```bash
 node --check static/app.js        # sintaxe
+node --test tests/js/*.test.mjs   # 38 testes do frontend
 .venv/bin/python -m pytest tests/ -q
 uvx --from ruff==0.16.8 ruff check app.py core tray.py
 ```
